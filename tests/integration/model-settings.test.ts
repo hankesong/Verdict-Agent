@@ -27,7 +27,7 @@ test('model profiles persist, keys stay private and the wallet uses the selected
     assert.equal(f.h.app.agents.info().guardModelId, 'settings-reviewer');
     assert.equal(f.h.app.wallet.info().configured, true);
     const file = resolve(f.h.config.dataDir, 'model-settings.json');
-    assert.equal(statSync(file).mode & 0o777, 0o600);
+    if (process.platform !== 'win32') assert.equal(statSync(file).mode & 0o777, 0o600);
     assert.ok(readFileSync(file, 'utf8').includes(secret));
     const oldEnv = f.h.config.guard!.apiKeyEnv;
     await f.h.restart();
@@ -48,6 +48,9 @@ test('settings reject stale writes, missing new-endpoint keys, unsafe URLs and d
   const f = await walletHarness();
   try {
     const s = await settings(f), profile = draft(s.agent);
+    const tooLarge = await f.rawApi('/api/settings/models/guard', { revision: s.revision, profile: draft(s.guard, { outputTokens: 1025 }) });
+    assert.equal(tooLarge.data.error, 'MODEL_REVIEWER_OUTPUT_LIMIT');
+    assert.equal((await settings(f)).revision, s.revision);
     for (const baseURL of ['http://example.com/v1', 'https://user:secret@example.com/v1', 'https://example.com/v1?key=SECRET', 'https://example.com/v1#secret']) {
       const res = await f.rawApi('/api/settings/models/agent', { revision: s.revision, profile: { ...profile, baseURL }, apiKey: 'TEST_KEY' });
       assert.equal(res.code, 400);
@@ -79,7 +82,8 @@ test('live reviews and unconsumed permits prevent model changes; cancelled revie
     await f.api(`/api/wallet/reviews/${next.reviewId}/cancel`, {});
     f.rpcState.delayMethod = 'eth_chainId'; f.rpcState.delayMs = 120;
     const pending = f.create();
-    await new Promise(resolve => setTimeout(resolve, 40));
+    for(let i=0;i<100&&!f.h.app.wallet.modelSettingsBusy;i++)await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(f.h.app.wallet.modelSettingsBusy, true);
     const latest = await settings(f);
     assert.equal((await f.rawApi('/api/settings/models/agent', { revision: latest.revision, profile: draft(latest.agent) })).data.error, 'MODEL_SETTINGS_BUSY');
     await pending;

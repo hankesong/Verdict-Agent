@@ -6,6 +6,7 @@ import './settings.css';
 const messages: Record<string, string> = {
   MODEL_SETTINGS_CHANGED: '配置已在其他页面更新，请刷新后再保存。',
   MODEL_SETTINGS_BUSY: '有任务正在运行或等待签名，请完成或取消后再保存。',
+  MODEL_REVIEWER_OUTPUT_LIMIT: '审查模型最大输出不能超过 1024 Token。',
   MODEL_API_KEY_REQUIRED: '请填写 API Key。',
   MODEL_KEY_REQUIRED_FOR_NEW_ENDPOINT: 'API 地址已更改，请重新填写该地址的 API Key。',
   MODEL_SETTINGS_SAVE_FAILED: '配置未保存，请稍后重试。',

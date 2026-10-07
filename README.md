@@ -134,3 +134,7 @@ PR #10 增加外审监控台、威胁账本和 `@earendil-works/pi-telemetry@1.0
 交易哈希上报后可显式启动[回执跟踪队列](docs/29-回执跟踪队列.md)：有界重试、暂停／恢复、重启后保留进度，实际结果仍由原回执和证据检查决定。`verify:wallet:evm` 已包含本地交易待出块到自动观察完成的两条代币路径。
 
 防御层已增加 OWNER／AGENT／EXECUTOR 身份、版本化付款授权、任务预算、材料摘要绑定、提议差异阻断、一次性执行凭证、执行适配器示例和多链 finality/reorg 观察。接口见 [Agent 防御层 API](docs/30-Agent防御层API.md)；通用合约漏洞审计、交易所正式 connector、浏览器插件 UI 与 OCR 仍需后续适配。
+
+## SSH 云端部署
+
+最终整合版本支持独立 Nginx HTTPS 站点、访问口令、两个独立数据目录的后端和 systemd 持久运行。部署准备、同源 API、密钥与数据目录以及回滚流程见 [部署说明](scripts/deploy/README.md)。钱包网页仅配置审查模型，付款仍由用户手动发起和签名。

@@ -44,7 +44,7 @@ export class ModelSettings {
       const current = this.configs[0][role];
       return current ? { ...ModelProfileSchema.parse({
         baseURL: current.baseURL, modelId: current.modelId, compatibility: current.compatibility,
-        requestTimeoutMs: current.requestTimeoutMs, outputTokens: current.outputTokens,
+        requestTimeoutMs: current.requestTimeoutMs, outputTokens: role === 'guard' ? Math.min(current.outputTokens, 1024) : current.outputTokens,
       }), hasApiKey: !!process.env[current.apiKeyEnv], source: current.source } : null;
     };
     return ModelSettingsSchema.parse({ schemaVersion: 'model-settings-v1', revision: this.state.revision, agent: profile('agent'), guard: profile('guard') });
@@ -54,6 +54,7 @@ export class ModelSettings {
     const input = UpdateModelSettingsSchema.parse(raw);
     if (input.revision !== this.state.revision) throw new ApiError(409, 'MODEL_SETTINGS_CHANGED');
     if (busy) throw new ApiError(409, 'MODEL_SETTINGS_BUSY');
+    if (role === 'guard' && input.profile.outputTokens > 1024) throw new ApiError(400, 'MODEL_REVIEWER_OUTPUT_LIMIT');
     const current = this.configs[0][role];
     if (!input.apiKey && current && input.profile.baseURL !== current.baseURL) throw new ApiError(400, 'MODEL_KEY_REQUIRED_FOR_NEW_ENDPOINT');
     const apiKey = input.apiKey ?? (current && process.env[current.apiKeyEnv]);
