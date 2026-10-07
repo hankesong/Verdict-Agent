@@ -1,8 +1,8 @@
-# 简易审计前端
+# Verdict 付款前端
 
-使用 TypeScript + Vite 的三个视图，直接消费 B 的 HTTP API 和 `@verdict/protocol` schema。没有前端验签、固定 verdict、模拟通过开关或私钥；PI 模型仅在服务端运行。
+TypeScript + Vite 页面直接消费 STAGING 的 HTTP API 与 `@verdict/protocol`。浏览器不持有私钥，不生成审查 verdict，不执行服务端验签或证明核验。当前整合范围见 [025](../../docs/decisions/025-staging-frontend-integration.md)。
 
-## 本地运行
+## 运行
 
 使用 Node 22.23.3，在仓库根目录：
 
@@ -13,29 +13,38 @@ npm run dev:start
 npm run web
 ```
 
-打开 http://127.0.0.1:5173 。前端终端 Ctrl-C 停止；`npm run dev:stop` 停止 B 的五个演示进程，保留证据。`npm run build` 同时构建后端和网页；`npm run web:preview` 在相同端口预览 `apps/web/dist`。
+默认打开 http://127.0.0.1:5173/#wallet。已有服务时只需运行网页。`VITE_PRIMARY_API` 与 `VITE_SECONDARY_API` 指定主、第二实例，默认为 3001 / 3002；地址不得包含认证信息。自定义前端端口需要匹配后端 CORS 配置。`npm run build` 构建网页与后端，`npm run web:preview` 预览构建产物。
 
-默认后端为 3001，第二实例为 3002。自定义时使用 `VITE_PRIMARY_API`、`VITE_SECONDARY_API` 环境变量，在启动或构建时提供；它们属于公开地址，不能放认证信息。改网页端口时同步后端 `corsOrigins`。所有本地服务器默认 loopback，开发服务器拒绝读取工作区 `.local`、私钥、数据库和 `.git`。
+## 页面与真实接口
 
-## 已实现
+- 付款工作台：新建付款、本机常用条件、付款记录；最近操作放在可折叠侧栏。条件按账户与网络隔离，原条件与本次交易独立提交，并列展示地址、金额、网络和费用等差异。
+- 钱包连接：EIP-6963 发现与 EIP-1193 账户、网络、交易请求。要求 `wallet-review-v2` 会话，账户／链／provider 变化使旧审查与手写确认失效。
+- 逐笔确认：每次签名前手写姓名，不识别、不保存、不上传笔迹。先 confirm，再 consume，成功后请求钱包签名；拒签、刷新和过期不复用旧许可。确认响应丢失时读取原记录核对，不重复确认。
+- 受限合约操作：由 `supportedOperations` 控制入口，使用 viem 固定 ABI 编码 ERC-20 transfer / approve。是否放行由后端的配置、模拟、追踪和审查决定；不提供任意合约漏洞审计。
+- 快递路线：后端钱包图事件逐条成卡，包裹沿实际连线移动，到站停留约 200ms。追加事件与重排保留当前运动位置；分页、缺口恢复不补造已执行步骤。刷新历史与减少动态效果设置直接定位，手机采用纵向路线。
+- BOT 原生币回执：首次 broadcast 上报哈希，后续 receipt/recheck，每 3 秒检查一次，最多 12 次或 2 分钟。未知保持未知，回执、状态复查和证据分开显示。证据从后端下载，第二实例重新查询并复验。
+- 旧账户验收、证据、服务、PI、Agent 活动和 Guard 工具保留在“审计工具”中，继续使用原接口。
 
-- 任务验收：从后端读取 context／检查点／账户，可选字段、候选、历史开关及预算；展示实际调用、替换、停止、采用值与逐项 checks。
-- 服务目录：声明能力、来源标签、范围／窗口／样本数、实际观测和排序理由；可触发真实公共 RPC 探测。
-- 证据复验：索引、原包／manifest 下载、文件完整性和独立发布状态；在第二实例导入并重验，展示重算结论、上下文比较以及历史开关的真实排序对照。
-- 网络恢复：提交响应丢失时重试同一个 requestId；已知任务轮询中断后锁定新提交并允许重新连接恢复；sessionStorage 仅记录当前任务 ID／尚未确认的请求。
-- 适配窄屏；所有服务／证据动态文本转义后显示。二次复验 COMPLETED 不显示为数据 PASS。
+本机付款条件是用户预填配置，不是服务端可信授权；付款历史目前使用浏览器索引，不是后端分页查询。条件、取消、异常和新建付款保留独立 review。外部文本转义后呈现。
 
-## 验证与边界
+## STAGING 后续接线
+
+STAGING 后端已提供历史／actions、风险 override、代币与多链后验、持久回执跟踪以及 Agent 防御层授权／提议接口。本次迁移保留现有页面流程，以上新增接口尚未接到页面。前端仍只允许 ALLOWED 审查进入确认；合约提交与非 BOT 网络只展示交易哈希，未开启后验入口；本页查询不代表关闭页面后自动启动服务端跟踪。
+
+参考 [钱包查询与操作接口](../../docs/28-staging钱包查询与操作接口.md)、[持久跟踪](../../docs/29-回执跟踪队列.md) 和 [Agent 防御层](../../docs/decisions/024-agent-defense-layer.md)。[故事核实记录](../../docs/28-friday-payment-readiness.md) 是迁移前的能力快照，不能覆盖后端后续交付。
+
+## 本地体验
+
+loopback 的 Vite 开发环境提供“体验流程”；`?experience=1#wallet` 使用仅存于内存的 UI_MOCK 样本，复用付款、手写与路线组件。来源标签可见，不连接钱包、不访问后端、不签名或广播、不写入真实历史或证据。刷新重置，退出返回真实模式；生产构建不启用入口。
+
+## 验证
 
 ```bash
+npm run typecheck
 npx playwright install chromium
-npm run test:e2e
+npx playwright test
+npx playwright test --config playwright.wallet.config.ts
+npx tsx --test tests/integration/wallet.test.ts
 ```
 
-七条浏览器测试启动隔离的真实 A/B 服务和 SQLite，覆盖错误替换、全部失败、原文件下载、第二实例复验／排序、页面刷新、丢失响应幂等重试、手机布局、后端不可用与私有文件访问隔离。测试用后端 3101/3102，前端 5174，不复用开发实例。CI 同样执行。
-
-当前是简易本地界面。可信检查点／授权来自后端配置；已增加 PI 自然语言直接执行与工具过程展示，不提供通用聊天；没有钱包、链上发布写入、文件上传导入器或完整任务历史搜索。存证 adapter／合约尚未实现；默认如实显示 not_requested。原包已超过首次导入有效期时，需要操作者配置受信历史评估时间，页面不会替包自行授权。
-
-PI 入口需要服务端显式配置；未配置时保留原固定流程。使用 `npm run pi:configure` 生成本地模型配置，API 密钥只在服务端环境中提供。PI 过程、模型错误／用量及 RunSnapshot 分开显示。详细操作见 [PI 说明](../../docs/15-PI接入与复验.md)。
-
-活动图位于 `#activity`，使用局部懒加载 React Flow，回放和实时模式共用同一归并器。`#activity?agent=ID` 连接只读增量接口。数据来源、运行与测试见 [说明](../../docs/22-Agent活动图.md)。
+旧浏览器回归使用 3101 / 3102 / 5174；钱包专项使用 3122 / 5183，均使用隔离数据库。钱包后端真实运行，钱包、RPC 与模型为 TEST_TRANSPORT；浏览器测试不代表真实插件实签或公开网络交易完成。覆盖条件对照、手写声明、幂等恢复、失效、拒签、路线运动、模拟隔离、回执预算及移动端布局。结果见 [整合记录](../../docs/decisions/025-staging-frontend-integration.md)。

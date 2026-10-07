@@ -31,3 +31,6 @@
 | [022](022-staging-backend-continuation.md) | staging 子分支接力 | 最近审查与可用操作接口，本地 EVM 回执／第二实例复验 |
 | [023](023-bounded-receipt-tracking.md) | 有界回执跟踪 | 显式队列、退避／限额、暂停恢复与重启持久化 |
 | [024](024-agent-defense-layer.md) | Agent 防御层 | 用户授权、Agent 提议、执行凭证、身份边界与多链观察 |
+| [021](021-frontend-wallet-product.md) | 钱包优先的正式前端 | 保留原前端工作树的产品方向与演进记录 |
+| [022 前端](022-friday-payment-frontend.md) | 《周五付款》付款工作台 | 本机条件、付款对照、逐次手写与快递路线 |
+| [025](025-staging-frontend-integration.md) | 前端合入 STAGING | 钱包 v2 页面与现有后端集成；新增后端接口接线边界 |

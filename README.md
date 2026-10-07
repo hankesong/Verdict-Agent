@@ -57,7 +57,7 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 
 ## 简易前端与 Agent 框架
 
-运行 `npm run web` 打开 [验收工作台](http://127.0.0.1:5173)：提交任务、查看错误替换与逐项检查、浏览服务观测、下载证据、发起第二实例复验和比较历史证据排序。网页使用 TypeScript + Vite，详见 [前端说明](apps/web/README.md)。
+运行 `npm run web` 打开 [付款工作台](http://127.0.0.1:5173/#wallet)。侧栏“审计工具”保留任务验收、错误替换与逐项检查、服务观测、证据下载、第二实例复验和历史证据排序。网页使用 TypeScript + Vite，详见 [前端说明](apps/web/README.md)。
 
 底层使用 **PI agent-core / pi-ai 1.0.4** 的真实工具循环。按用户最新要求，输入任务后直接执行，PI 选服务、处理失败并调用复验；网页没有草案确认步骤。共享执行器强制 A 核验、预算和原子采用。**GLM 5.3 真实接口已跑通错误替换至 PASS 与全失败停止**；模型费用未知。配置、实际结果与限制见 [PI 接入与复验](docs/15-PI接入与复验.md)，[30 条场景数据集](fixtures/agent/README.md) 可按固定哈希复跑。
 
@@ -111,7 +111,7 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 
 ## 钱包签名前审查
 
-钱包后端已升级为 v2：会话版本、原生币预审、配置内 ERC-20 转账／授权模拟，以及签名前逐次确认。服务器不持有私钥、不广播交易。**现有钱包页面尚未适配 v2 会话与手写确认，旧创建请求会被拒绝**；API 接线、配置与实际范围见 [钱包后端 v2](docs/27-钱包后端v2.md)。`npm run test:wallet` 运行专项检查，`npm run verify:wallet:evm` 运行另行安装本地工具后的真实 EVM 验证。此前 BOT 原生币的一笔命令行钱包实测仍见 [24](docs/24-钱包活动图与BOT测试网观察.md)，不代表新增合约路径或网页插件实签已经完成。
+钱包后端已升级为 v2：会话版本、原生币预审、配置内 ERC-20 转账／授权模拟，以及签名前逐次确认。服务器不持有私钥、不广播交易。**STAGING 已接入付款工作台、v2 会话、逐次手写确认和逐事件快递路线**；前端接线范围见 [整合记录](docs/decisions/025-staging-frontend-integration.md)；API 接线、配置与实际范围见 [钱包后端 v2](docs/27-钱包后端v2.md)。`npm run test:wallet` 运行专项检查，`npm run verify:wallet:evm` 运行另行安装本地工具后的真实 EVM 验证。此前 BOT 原生币的一笔命令行钱包实测仍见 [24](docs/24-钱包活动图与BOT测试网观察.md)，不代表新增合约路径或网页插件实签已经完成。
 
 ## PI 行为看板
 
