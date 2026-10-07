@@ -1531,3 +1531,64 @@ dd {
 .pi-body .hint {
   margin-top: 9px;
 }
+
+/* Guard pages: give explanatory copy and report import controls room to breathe. */
+#view-monitor .evidence-list-panel > .hint,
+#view-threats .evidence-list-panel > .hint {
+  margin: 8px 18px 16px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+#view-monitor #monitor-list,
+#view-threats #threats-list {
+  padding: 0 18px;
+}
+#view-threats #threats-list > h3 {
+  margin: 16px 0 10px;
+  line-height: 1.5;
+}
+#view-threats #threats-list > .hint {
+  margin: 10px 0 16px;
+  line-height: 1.75;
+}
+#view-threats .import-box {
+  margin: 16px 18px 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+#view-threats .import-box textarea {
+  display: block;
+  width: 100%;
+  min-height: 132px;
+  padding: 11px 12px;
+  border: 1px solid #dce3d6;
+  border-radius: 6px;
+  background: #fbfcf8;
+  color: var(--ink);
+  font: 11px/1.65 "SFMono-Regular", Consolas, monospace;
+  resize: vertical;
+}
+#view-threats .import-box textarea:focus {
+  outline: 2px solid #cf9a70;
+  outline-offset: 1px;
+}
+#view-threats #threat-import-submit {
+  margin-top: 10px;
+}
+#view-threats #threat-import-result,
+#view-threats #threat-detail pre {
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+#view-monitor .evidence-list-panel .panel-heading,
+#view-threats .evidence-list-panel .panel-heading {
+  gap: 12px;
+}
+#view-monitor .evidence-list-panel .panel-heading h2,
+#view-threats .evidence-list-panel .panel-heading h2 {
+  min-width: 0;
+  line-height: 1.5;
+}
