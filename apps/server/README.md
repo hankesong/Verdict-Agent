@@ -1,5 +1,7 @@
 # B 后端
 
+2026-10-07 本轮后端定稿，范围与复验依据见 [018 决定](../../docs/decisions/018-backend-finalization.md)。保留现有 API 和验收语义；不接入本次讨论的准入新方案、OSV／供应链准入服务或额外逐动作模型审批。后续默认围绕现有范围修复、复验和交接。
+
 已实现真实服务调用、A 包验收、有界替换、SQLite 原子采用、内容寻址证据、导入与第二实例复验、RPC 观测和独立发布状态。默认仅绑定 loopback。公开入口为 `start_server`、`Engine`、`load_server_config`；不会复制内核证明或验签逻辑。
 
 ```bash
