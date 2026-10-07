@@ -1,14 +1,13 @@
 import { symbol } from '../shell';
 
-import type { ModelRole } from '@verdict/protocol';
-export type { ModelRole } from '@verdict/protocol';
-export const modelRoles: ModelRole[] = ['agent', 'guard'];
-const titles: Record<ModelRole, string> = { agent: '执行 Agent', guard: '审查 Agent' };
-const descriptions: Record<ModelRole, string> = { agent: '理解任务与安排执行', guard: '检查交易与授权条件' };
+export type ModelRole = 'guard';
+export const modelRoles: ModelRole[] = ['guard'];
+const titles: Record<ModelRole, string> = { guard: '审查 Agent' };
+const descriptions: Record<ModelRole, string> = { guard: '检查交易与授权条件' };
 
 function profileCard(role: ModelRole) {
   return `<form class="model-card" id="model-${role}" data-model-role="${role}">
-    <div class="model-card-heading"><span class="model-icon">${symbol(role === 'agent' ? 'arrow' : 'shield')}</span><div><h2>${titles[role]}</h2><p>${descriptions[role]}</p></div><span class="model-state" id="${role}-state">读取中</span></div>
+    <div class="model-card-heading"><span class="model-icon">${symbol('shield')}</span><div><h2>${titles[role]}</h2><p>${descriptions[role]}</p></div><span class="model-state" id="${role}-state">读取中</span></div>
     <div class="model-current"><span>当前模型</span><strong id="${role}-current">—</strong><span id="${role}-source"></span></div>
     <fieldset id="${role}-fields" disabled>
       <label for="${role}-baseURL">API 地址</label><input id="${role}-baseURL" name="baseURL" type="url" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false" maxlength="2048" required>

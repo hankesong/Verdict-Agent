@@ -36,3 +36,4 @@
 | [025](025-staging-frontend-integration.md) | 前端合入 STAGING | 钱包 v2 页面与现有后端集成；新增后端接口接线边界 |
 | [026](026-same-browser-usage.md) | 同设备使用范围 | 保留本机条件与最近索引，当前不建设跨端同步 |
 | [027](027-local-model-settings.md) | 本地模型设置 | 网页配置两类 Agent，私有持久保存并立即生效 |
+| [028](028-reviewer-only-settings.md) | 仅保留审查模型设置 | 更新 027 的网页范围，付款手动发起，不提供执行 Agent 配置 |
