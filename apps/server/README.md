@@ -40,3 +40,5 @@ PI 可选模块：`agent-service.ts` 提供直接 PI 执行、任务绑定、执
 钱包后端 v2 新增浏览器会话版本、逐次手写完成声明的绑定与一次性消费；配置后可审查固定代码哈希的 ERC-20 transfer/approve，并以真实 RPC 模拟核对效果。创建请求必须使用 `wallet-review-v2`，旧前端需要适配，当前未完成新网页签名流程。API、配置、错误边界与验证见 [钱包后端 v2](../../docs/27-钱包后端v2.md)。专项 `npm run test:wallet`；可选本地真实 EVM `npm run verify:wallet:evm`。
 
 staging 增加 `/override`（仅模型拒绝／不确定且确定性检查完成）、完整 calldata 回报绑定、代币 receipt 事件及历史余额／allowance 观察、`wallet-observation-v2` 独立复验。硬规则仍不可覆盖，详见 [020](../../docs/decisions/020-staging-risk-and-token-receipts.md)。
+
+`GET /api/wallet/reviews` 提供筛选与键集分页，`GET /api/wallet/reviews/:id/actions` 投影当前可用操作；两者不触发 RPC／模型或写入。`wallet-history.ts` 负责摘要与查询，`WalletReviews.actions` 复用本地会话／策略／摘要校验。`verify:wallet:evm` 现覆盖本地测试驱动发送后的真实 EVM 回执与第二实例复验，后端仍不广播。前端交接见 [28](../../docs/28-staging钱包查询与操作接口.md)。

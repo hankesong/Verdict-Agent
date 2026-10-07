@@ -80,11 +80,14 @@ export function start_server(config: ServerConfig, launchId = "foreground") {
       const walletSessionRoute=path.match(/^\/api\/wallet\/sessions\/([\w-]+)$/);
       if(walletSessionRoute&&req.method==='POST'){send(res,200,wallet.updateSession(walletSessionRoute[1],await body(req)));return;}
       if(req.method==='POST'&&path==='/api/wallet/reviews'){send(res,202,wallet.create(await body(req)));return;}
+      if(req.method==='GET'&&path==='/api/wallet/reviews'){send(res,200,wallet.list(new URL(req.url!,'http://localhost').searchParams));return;}
       if(req.method==='POST'&&path==='/api/wallet/evidence/replay'){send(res,200,await wallet.replayEvidence(await body(req)));return;}
       const walletEvidenceRoute=path.match(/^\/api\/wallet\/evidence\/(0x[0-9a-f]{64})$/);
       if(req.method==='GET'&&walletEvidenceRoute){send(res,200,wallet.evidence.read(walletEvidenceRoute[1]));return;}
       const walletGraphRoute=path.match(/^\/api\/wallet\/reviews\/([\w-]+)\/graph$/);
       if(req.method==='GET'&&walletGraphRoute){const query=new URL(req.url!,'http://localhost').searchParams;send(res,200,agents.graph.walletPage(walletGraphRoute[1],Number(query.get('after')??0),Number(query.get('limit')??200)));return;}
+      const walletActionsRoute=path.match(/^\/api\/wallet\/reviews\/([\w-]+)\/actions$/);
+      if(req.method==='GET'&&walletActionsRoute){send(res,200,wallet.actions(walletActionsRoute[1]));return;}
       const receiptRecheck=path.match(/^\/api\/wallet\/reviews\/([\w-]+)\/receipt\/recheck$/);
       if(req.method==='POST'&&receiptRecheck){z.strictObject({}).parse(await body(req));send(res,200,await wallet.recheckReceipt(receiptRecheck[1]));return;}
       const walletRoute=path.match(/^\/api\/wallet\/reviews\/([\w-]+)(?:\/(confirm|override|consume|cancel|broadcast))?$/);

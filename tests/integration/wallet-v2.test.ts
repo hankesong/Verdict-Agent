@@ -129,6 +129,12 @@ for(const variant of ['failed','eventWrong','stateDifferent','historyUnavailable
     if(variant==='failed'){assert.equal(done.receiptReport.receiptStatus,'FAIL');assert.equal(done.tokenPostState.stateComparison,'NOT_EXECUTED');}
     else if(variant==='historyUnavailable'){assert.equal(done.receiptReport.receiptStatus,'SUCCESS');assert.equal(done.receiptReport.postStateStatus,'UNKNOWN');assert.equal(done.tokenPostState,undefined);assert.equal(done.evidenceRef,undefined);}
     else{assert.equal(done.receiptReport.receiptStatus,'SUCCESS');assert.equal(done.tokenPostState[variant==='eventWrong'?'receiptEvent':'stateComparison'],variant==='eventWrong'?'MISMATCH':'DIFFERENT');}
+    const summary=(await f.api('/api/wallet/reviews')).data.reviews[0];
+    assert.equal(summary.receiptStatus,done.receiptReport.receiptStatus);
+    assert.equal(summary.postStateStatus,done.receiptReport.postStateStatus);
+    if(variant==='historyUnavailable')assert.equal(summary.tokenOutcome,null);
+    else assert.deepEqual(summary.tokenOutcome,{receiptEvent:done.tokenPostState.receiptEvent,stateComparison:done.tokenPostState.stateComparison,scope:'BLOCK_RANGE_NOT_TRANSACTION_CAUSAL'});
+    assert.deepEqual((await f.api(`/api/wallet/reviews/${r.reviewId}/actions`)).data.actions,variant==='historyUnavailable'?['recheck_receipt']:[]);
   }finally{await f.close();}
 });
 test('user override cannot survive cancel, session changes, expiry or recheck failure',async()=>{
@@ -207,6 +213,8 @@ for(const approve of [false,true])test(`configured ERC-20 ${approve?'approval':'
     const r=await f.create(tokenBody(approve));assert.equal(r.status,'ALLOWED',r.reason);
     const facts=r.checks.find(c=>c.id==='preflight')!.facts;assert.equal(facts.operation,approve?'erc20_approve':'erc20_transfer');assert.equal(facts.after,approve?'100':'900,300');
     assert.equal(facts.codeHash,keccak256(runtime));assert.equal(r.preparedTransaction!.gas,'0xc350');
+    const tokenConfig=f.h.config.wallet!.networks[0].tokens[0];tokenConfig.codeHash='0x'+'0'.repeat(64);
+    assert.deepEqual((await f.api(`/api/wallet/reviews/${r.reviewId}/actions`)).data.reasonCodes,['TOKEN_POLICY_CHANGED']);tokenConfig.codeHash=keccak256(runtime);
     await f.confirm(r);assert.equal((await f.api(`/api/wallet/reviews/${r.reviewId}/consume`,{transaction:r.preparedTransaction})).code,200);
     assert.equal(f.rpcState.calls.filter(c=>c.method==='eth_simulateV1').length,2);
     assert.equal((await f.api(`/api/wallet/reviews/${r.reviewId}/broadcast`,{txHash:'0x'+'a'.repeat(64)})).data.error,'BROADCAST_TRANSACTION_MISMATCH');

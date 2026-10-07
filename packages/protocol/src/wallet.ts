@@ -138,6 +138,42 @@ export const WalletMetaSchema = z.strictObject({
   reviewSchemaVersion: z.literal('wallet-review-v2').optional(),
   confirmationRequired: z.boolean().optional(),
 });
+export const WalletReviewActionsSchema = z.strictObject({
+  schemaVersion: z.literal('wallet-actions-v1'), reviewId: z.string(), evaluatedAt: z.number().int(),
+  status: WalletReviewSchema.shape.status,
+  executionState: z.enum(['REVIEWING','AWAITING_CONFIRMATION','AWAITING_RISK_CONFIRMATION','READY_TO_CONSUME','PERMIT_CONSUMED','EXPIRED','CANCELLED','INTERRUPTED','STOPPED','UNAVAILABLE']),
+  reviewVerdict: z.enum(['ALLOW','BLOCK','UNCERTAIN']).nullable(),
+  userDecision: z.enum(['NOT_CONFIRMED','CONFIRMED','CONTINUE_WITH_RISK']),
+  decisionEffective: z.boolean(), validUntil: z.number().int().nullable(),
+  actions: z.array(z.enum(['confirm','override','consume','cancel','report','recheck_receipt'])),
+  reasonCodes: z.array(z.string().max(160)),
+});
+export const WalletReviewSummarySchema = z.strictObject({
+  reviewId: z.string(), createdAt: z.number().int(), account: WalletAddressSchema, chainId: WalletQuantitySchema,
+  operation: z.enum(['native_transfer','erc20_transfer','erc20_approve']),
+  target: WalletAddressSchema, token: WalletAddressSchema.nullable(), amount: Amount,
+  status: WalletReviewSchema.shape.status, reason: z.string(),
+  reviewVerdict: z.enum(['ALLOW','BLOCK','UNCERTAIN']).nullable(),
+  userDecision: WalletReviewActionsSchema.shape.userDecision,
+  receiptStatus: z.enum(['NOT_REPORTED','UNKNOWN','SUCCESS','FAIL','REJECTED']),
+  postStateStatus: z.enum(['NOT_CHECKED','UNKNOWN','POST_STATE_RECHECKED']),
+  tokenOutcome: WalletTokenPostStateSchema.pick({receiptEvent:true,stateComparison:true,scope:true}).nullable(),
+  evidenceRef: WalletHashSchema.nullable(),
+});
+export const WalletReviewListQuerySchema = z.strictObject({
+  account: WalletAddressSchema.optional(), chainId: WalletQuantitySchema.optional(),
+  status: WalletReviewSchema.shape.status.optional(),
+  operation: WalletReviewSummarySchema.shape.operation.optional(),
+  limit: z.string().regex(/^[1-9][0-9]{0,2}$/).transform(Number).pipe(z.number().max(100)).optional(),
+  cursor: z.string().min(1).max(1024).regex(/^[A-Za-z0-9_-]+$/).optional(),
+});
+export const WalletReviewPageSchema = z.strictObject({
+  schemaVersion: z.literal('wallet-review-page-v1'), reviews: z.array(WalletReviewSummarySchema),
+  nextCursor: z.string().nullable(), hasMore: z.boolean(),
+});
+export type WalletReviewActions = z.infer<typeof WalletReviewActionsSchema>;
+export type WalletReviewSummary = z.infer<typeof WalletReviewSummarySchema>;
+export type WalletReviewPage = z.infer<typeof WalletReviewPageSchema>;
 export type WalletTransaction = z.infer<typeof WalletTransactionSchema>;
 export type PreparedWalletTransaction = z.infer<typeof PreparedWalletTransactionSchema>;
 export type WalletIntent = z.infer<typeof WalletIntentSchema>;

@@ -4,7 +4,7 @@ import { digest } from '@verdict/core';
 import { fetch_json, TransportError } from '@verdict/observations';
 import {
   CreateWalletReviewSchema, ConsumeWalletReviewSchema, BroadcastWalletReviewSchema, WalletReviewSchema, WalletQuantitySchema,
-  WalletStateObservationSchema, ReplayWalletEvidenceSchema, ConfirmWalletReviewSchema, OverrideWalletReviewSchema, type WalletReview, type PreparedWalletTransaction, type AgentGraphEvent,
+  WalletStateObservationSchema, ReplayWalletEvidenceSchema, ConfirmWalletReviewSchema, OverrideWalletReviewSchema, WalletReviewActionsSchema, type WalletReview, type PreparedWalletTransaction, type AgentGraphEvent, type WalletReviewActions,
 } from '@verdict/protocol';
 import type { ServerConfig } from './config.js';
 import { Store, ApiError } from './store.js';
@@ -16,6 +16,7 @@ import type {ObservationSink} from './observability.js';
 import { WalletSessions } from './wallet-session.js';
 import { WalletCheckFailure as CheckFailure, contractPolicy, inspectContract, simulateContract } from './wallet-contract.js';
 import { tokenPostState } from './wallet-token-observation.js';
+import { listWalletReviews, userDecision } from './wallet-history.js';
 
 const hex = (n: bigint) => '0x' + n.toString(16);
 const quantity = (v: unknown) => BigInt(WalletQuantitySchema.parse(v));
@@ -35,7 +36,9 @@ export class WalletReviews {
   constructor(private store: Store, private config: ServerConfig, private graph: GraphStore, private observe:ObservationSink=()=>{}) {
     this.evidence=new WalletEvidenceStore(store);
     this.sessions=new WalletSessions(store,config);
-    store.db.exec('CREATE TABLE IF NOT EXISTS wallet_reviews(id TEXT PRIMARY KEY, request_id TEXT UNIQUE NOT NULL, body TEXT NOT NULL); CREATE TABLE IF NOT EXISTS wallet_tx_claims(tx_hash TEXT PRIMARY KEY, review_id TEXT UNIQUE NOT NULL);');
+    store.db.exec(`CREATE TABLE IF NOT EXISTS wallet_reviews(id TEXT PRIMARY KEY, request_id TEXT UNIQUE NOT NULL, body TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS wallet_tx_claims(tx_hash TEXT PRIMARY KEY, review_id TEXT UNIQUE NOT NULL);
+      CREATE INDEX IF NOT EXISTS wallet_reviews_created_idx ON wallet_reviews(json_extract(body,'$.createdAt') DESC,id DESC);`);
     for (const row of store.db.prepare('SELECT body FROM wallet_reviews').all() as {body:string}[]) {
       const r = WalletReviewSchema.parse(JSON.parse(row.body));
       if (['QUEUED','REVIEWING','ALLOWED'].includes(r.status)||(['BLOCKED','UNCERTAIN'].includes(r.status)&&r.userOverride)) {
@@ -75,6 +78,52 @@ export class WalletReviews {
     const row=this.store.db.prepare('SELECT body FROM wallet_reviews WHERE id=?').get(id) as {body:string}|undefined;
     if(!row)throw new ApiError(404,'WALLET_REVIEW_NOT_FOUND');
     return WalletReviewSchema.parse(JSON.parse(row.body));
+  }
+  list(params:URLSearchParams){ return listWalletReviews(this.store,params); }
+  // Availability is a local snapshot. POST handlers still validate again, including RPC at consume.
+  actions(id:string):WalletReviewActions {
+    const r=this.get(id),now=Date.now();
+    const result:WalletReviewActions={schemaVersion:'wallet-actions-v1',reviewId:id,evaluatedAt:now,status:r.status,
+      executionState:'UNAVAILABLE',reviewVerdict:r.reviewer.verdict,
+      userDecision:userDecision(r),
+      decisionEffective:false,validUntil:r.expiresAt,actions:[],reasonCodes:[]};
+    const finish=(state:WalletReviewActions['executionState'],reason?:string)=>{
+      result.executionState=state;if(reason)result.reasonCodes.push(reason);return WalletReviewActionsSchema.parse(result);
+    };
+    if(r.status==='CONSUMED'){
+      const reportable=!!r.preparedTransaction&&(r.reviewer.verdict==='ALLOW'||(r.userOverride&&r.userOverride.confirmationDigest===this.overrideDigest(r)));
+      if(!reportable)return finish('PERMIT_CONSUMED','WALLET_PERMIT_NOT_CONSUMED');
+      try{this.networkForReceipt(r);}catch(e){if(e instanceof ApiError)return finish('PERMIT_CONSUMED',e.message);throw e;}
+      if(this.shuttingDown)return finish('PERMIT_CONSUMED','SERVER_STOPPING');
+      if(this.reports.has(id))return finish('PERMIT_CONSUMED','WALLET_REPORT_IN_PROGRESS');
+      if(this.reports.size>=2)return finish('PERMIT_CONSUMED','WALLET_REPORT_BUSY');
+      if(!r.receiptReport)result.actions.push('report');
+      else if(!r.evidenceRef&&r.receiptReport.receiptStatus!=='REJECTED')result.actions.push('recheck_receipt');
+      return finish('PERMIT_CONSUMED');
+    }
+    if(r.status==='CANCELLED'||r.status==='INTERRUPTED'||r.status==='EXPIRED')return finish(r.status,r.reason);
+    result.actions.push('cancel');
+    if(this.shuttingDown)return finish('UNAVAILABLE','SERVER_STOPPING');
+    try{this.sessions.assertReview(r);}catch(e){if(e instanceof ApiError)return finish('UNAVAILABLE',e.message);throw e;}
+    if(r.status==='QUEUED'||r.status==='REVIEWING')return finish('REVIEWING');
+    const continued=this.canOverride(r);
+    if(r.status!=='ALLOWED'&&!continued)return finish('STOPPED',r.reason);
+    if(!r.expiresAt||now>=r.expiresAt)return finish('EXPIRED','WALLET_PERMIT_UNAVAILABLE');
+    if(!r.preparedTransaction||!r.confirmationNonce||digest(r.preparedTransaction)!==r.transactionDigest)return finish('UNAVAILABLE','WALLET_TRANSACTION_CHANGED');
+    try{
+      const n=this.policy(r);
+      if(r.intent.operation==='contract_call'&&contractPolicy(r,n).codeHash!==r.checks.find(c=>c.id==='preflight')?.facts.codeHash)return finish('UNAVAILABLE','TOKEN_POLICY_CHANGED');
+    }catch(e){if(e instanceof CheckFailure)return finish('UNAVAILABLE',e.reason);throw e;}
+    if(this.consuming.has(id))return finish('UNAVAILABLE','WALLET_CONSUME_IN_PROGRESS');
+    if(!r.userConfirmedAt){
+      if(r.userOverride)return finish('UNAVAILABLE','WALLET_CONFIRMATION_REQUIRED');
+      result.actions.unshift(continued?'override':'confirm');
+      return finish(continued?'AWAITING_RISK_CONFIRMATION':'AWAITING_CONFIRMATION');
+    }
+    if(r.userConfirmationDigest!==this.confirmationDigest(r))return finish('UNAVAILABLE','WALLET_CONFIRMATION_REQUIRED');
+    if(continued&&r.userOverride?.confirmationDigest!==this.overrideDigest(r))return finish('UNAVAILABLE','WALLET_RISK_OVERRIDE_CHANGED');
+    result.actions.unshift('consume');result.decisionEffective=true;
+    return finish('READY_TO_CONSUME');
   }
   private save(r:WalletReview) {
     const old=this.store.db.prepare('SELECT body FROM wallet_reviews WHERE id=?').get(r.reviewId) as {body:string}|undefined;

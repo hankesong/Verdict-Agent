@@ -128,3 +128,5 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 PR #10 增加外审监控台、威胁账本和 `@earendil-works/pi-telemetry@1.0.4` 摘要导出／外部活动导入。启用的攻击签名规则在调用模型前硬拦截；主线的活动图与钱包审查入口保持可用。见 [模型外审产品 PRD](docs/21-模型外审产品PRD.md)。
 
 当前 `staging` 后端还支持有界的用户风险继续，以及已配置 ERC-20 的交易回执、余额／授权观察和独立复验。前端接线与公开网络验证仍需分别完成，见 [staging 后端决定](docs/decisions/020-staging-risk-and-token-receipts.md)。
+
+`staging` 另提供最近审查列表／筛选分页与当前可用操作两个只读接口，供前端侧栏和确认流程接线；接口字段、状态语义和本地真实 EVM 回执／第二实例复验结果见 [钱包查询与操作接口](docs/28-staging钱包查询与操作接口.md)。

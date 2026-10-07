@@ -6,7 +6,7 @@ import {createServer} from 'node:net';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {encodeAbiParameters,encodeFunctionData,erc20Abi,keccak256,toHex} from 'viem';
-import type {CreateWalletReviewSchema} from '@verdict/protocol';
+import {WalletEvidenceReplaySchema,type CreateWalletReviewSchema} from '@verdict/protocol';
 import {z} from 'zod';
 import {walletHarness,body,account,recipient} from '../../tests/integration/wallet-graph-harness.js';
 
@@ -28,10 +28,11 @@ const rpc=async(method:string,params:unknown[])=>{
   const data=await response.json() as {error?:unknown;result?:unknown};if(data.error)throw Error(`${method}: ${JSON.stringify(data.error)}`);return data.result;
 };
 let f:Awaited<ReturnType<typeof walletHarness>>|undefined;
+let verifier:Awaited<ReturnType<typeof walletHarness>>|undefined;
 try{
   let ready=false;for(let i=0;i<50;i++){if(childError)throw childError;try{await rpc('eth_chainId',[]);ready=true;break;}catch{await new Promise(r=>setTimeout(r,100));}}assert.ok(ready,'local EVM did not start');
   const token='0x'+'3'.repeat(40),spender='0x'+'4'.repeat(40);
-  // Set up deterministic local state without a private key, signing or any public-network transaction.
+  // Synthetic loopback-only state. No private key or public-network transaction.
   await rpc('anvil_setBalance',[account,toHex(10n**20n)]);
   await rpc('anvil_setCode',[token,runtime]);
   const balanceSlot=keccak256(encodeAbiParameters([{type:'address'},{type:'uint256'}],[account as `0x${string}`,0n]));
@@ -43,6 +44,15 @@ try{
   f.h.config.wallet!.contractCalls.enabled=true;
   f.h.config.wallet!.networks[0].tokens=[{address:token,codeHash:keccak256(runtime as `0x${string}`),maxTransferAmount:'1000',maxApprovalAmount:'1000',approvedSpenders:[spender]}];
   f.rpcState.handler=async(method,params)=>rpc(method,params);
+  verifier=await walletHarness();
+  const verifierRpcEnv=verifier.h.config.wallet!.networks[0].rpcUrlEnv;
+  verifier.h.config.wallet=structuredClone(f.h.config.wallet);
+  verifier.h.config.wallet!.networks[0].rpcUrlEnv=verifierRpcEnv;
+  verifier.rpcState.handler=async(method,params)=>rpc(method,params);
+  // Load the copied local policy while retaining the verifier's own store and RPC configuration.
+  await verifier.h.restart();
+  assert.notEqual(f.h.app.engine.store.dir,verifier.h.app.engine.store.dir);
+  await rpc('anvil_impersonateAccount',[account]);
   const results=[];
   for(const approve of [false,true]){
     const input:z.infer<typeof CreateWalletReviewSchema>={...body(),clientRequestId:randomUUID(),
@@ -52,14 +62,35 @@ try{
     await f.confirm(r);const response=await f.api(`/api/wallet/reviews/${r.reviewId}/consume`,{transaction:r.preparedTransaction});assert.equal(response.code,200,JSON.stringify(response.data));
     const facts=r.checks.find(c=>c.id==='preflight')!.facts;
     assert.equal(facts.after,approve?'100':'900,100');
-    results.push({operation:approve?'erc20_approve':'erc20_transfer',status:r.status,before:facts.before,simulatedAfter:facts.after,gas:r.preparedTransaction?.gas});
+    const probe=encodeFunctionData({abi:erc20Abi,functionName:approve?'allowance':'balanceOf',args:approve?[account as `0x${string}`,spender as `0x${string}`]:[account as `0x${string}`]});
+    const unchanged=await rpc('eth_call',[{to:token,data:probe},'latest']);
+    assert.equal(BigInt(unchanged as string),approve?0n:1000n,'review and consume must not mutate EVM state');
+    // Only this test driver sends to its own Anvil. The backend only consumes and observes.
+    const txHash=await rpc('eth_sendTransaction',[r.preparedTransaction]);
+    assert.match(String(txHash),/^0x[0-9a-f]{64}$/);
+    const reported=await f.api(`/api/wallet/reviews/${r.reviewId}/broadcast`,{txHash});
+    assert.equal(reported.code,200,JSON.stringify(reported.data));
+    assert.equal(reported.data.receiptReport.receiptStatus,'SUCCESS',JSON.stringify(reported.data.receiptReport));
+    assert.equal(reported.data.tokenPostState?.receiptEvent,'MATCH',JSON.stringify(reported.data));
+    assert.equal(reported.data.tokenPostState.stateComparison,'MATCH');
+    assert.deepEqual(reported.data.tokenPostState.after.values,approve?['100']:['900','100']);
+    const packet=await f.api('/api/wallet/evidence/'+reported.data.evidenceRef);assert.equal(packet.code,200);
+    const replayResponse:{code:number;data:unknown}=await verifier.api('/api/wallet/evidence/replay',{packet:packet.data});
+    assert.equal(replayResponse.code,200);const replay=WalletEvidenceReplaySchema.parse(replayResponse.data);
+    assert.equal(replay.status,'MATCH',JSON.stringify(replay));
+    assert.equal(replay.reviewAndPermit,'NOT_REPLAYED');
+    assert.equal((await verifier.api('/api/wallet/reviews/'+r.reviewId)).code,404,'replay must not import signing permission');
+    results.push({operation:approve?'erc20_approve':'erc20_transfer',status:r.status,before:facts.before,simulatedAfter:facts.after,gas:r.preparedTransaction?.gas,
+      localTxHash:txHash,receipt:reported.data.receiptReport.receiptStatus,observedAfter:reported.data.tokenPostState.after.values,replay:replay.status});
   }
   const balance=await rpc('eth_call',[{to:token,data:encodeFunctionData({abi:erc20Abi,functionName:'balanceOf',args:[account as `0x${string}`]})},'latest']);
-  assert.equal(BigInt(balance as string),1000n,'simulation must not mutate local chain state');
+  assert.equal(BigInt(balance as string),900n,'only the explicit local transfer changes the balance');
   assert.ok(!f.rpcState.calls.some(c=>/send|sign/i.test(c.method)));
-  console.log(JSON.stringify({rpcSource:'LOCAL_ANVIL_EVM',modelSource:'TEST_TRANSPORT',solc:solc.version(),results,chainStateUnchanged:true,broadcasts:0},null,2));
+  assert.ok(!verifier.rpcState.calls.some(c=>/send|sign/i.test(c.method)));
+  console.log(JSON.stringify({rpcSource:'LOCAL_ANVIL_EVM',modelSource:'TEST_TRANSPORT',solc:solc.version(),results,simulationDidNotMutateState:true,backendBroadcasts:0,localTestDriverBroadcasts:2},null,2));
 }finally{
   if(f)await f.close();
+  if(verifier)await verifier.close();
   child.kill('SIGTERM');
   await new Promise<void>(r=>{if(child.exitCode!==null||child.signalCode!==null)return r();const timer=setTimeout(()=>{child.kill('SIGKILL');r();},2000);child.once('exit',()=>{clearTimeout(timer);r();});});
 }
