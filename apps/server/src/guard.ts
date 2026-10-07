@@ -14,7 +14,25 @@ export function boundaryViolation(boundary: AgentConditions, proposed: AgentCond
   if (proposed.budget.maxAttempts > boundary.budget.maxAttempts || proposed.budget.timeoutMs > boundary.budget.timeoutMs || BigInt(proposed.budget.maxCostWei) > BigInt(boundary.budget.maxCostWei)) return 'SCOPE_budget';
   return null;
 }
-type GuardState = { trustedTask:string; reviewer:{modelId:string;source:'LIVE'|'TEST_TRANSPORT'}; activities:{actionId?:string;sequence:number;action:string;args:unknown;source:'ACTOR'|'EXTERNAL';status:'PENDING'|'BLOCKED'|'AUTHORIZED'|'EXECUTED';resultDigest?:string}[]; boundary:TaskBoundary|null; status:'REVIEWING'|'ACTIVE'|'STOPPED'|'INTERRUPTED'|'FINISHED'; usage:AgentUsage; decisions:GuardDecision[] };
+// An enabled rule carries the attack signature extracted from a reproduced incident.
+// It is an additional hard stop and never relaxes the caller's boundary.
+export function ruleMatches(rule:{kind:string;value:string|null},action:string,args:unknown):boolean {
+  if (!rule.value) return false;
+  if (action === 'start_task') {
+    const parsed = AgentConditionsSchema.safeParse(args);
+    if (!parsed.success) return false;
+    if (rule.kind === 'SCOPE_ACCOUNT') return parsed.data.account === rule.value;
+    if (rule.kind === 'SCOPE_BLOCK') return parsed.data.blockHash === rule.value;
+    if (rule.kind === 'SCOPE_CANDIDATES') return parsed.data.candidateIds.includes(rule.value);
+    return false;
+  }
+  if (action === 'request_verified_state') {
+    const value = args as {serviceId?: unknown};
+    return rule.kind === 'SCOPE_CANDIDATES' && typeof value.serviceId === 'string' && value.serviceId === rule.value;
+  }
+  return false;
+}
+export type GuardState = { trustedTask:string; reviewer:{modelId:string;source:'LIVE'|'TEST_TRANSPORT'}; activities:{actionId?:string;sequence:number;action:string;args:unknown;source:'ACTOR'|'EXTERNAL';status:'PENDING'|'BLOCKED'|'AUTHORIZED'|'EXECUTED';resultDigest?:string}[]; boundary:TaskBoundary|null; status:'REVIEWING'|'ACTIVE'|'STOPPED'|'INTERRUPTED'|'FINISHED'; usage:AgentUsage; decisions:GuardDecision[] };
 export class Guard {
   constructor(readonly store:Store,readonly observe:ObservationSink=()=>{}) {
     store.db.exec('CREATE TABLE IF NOT EXISTS guard_tasks(id TEXT PRIMARY KEY,body TEXT NOT NULL)');
@@ -29,6 +47,15 @@ export class Guard {
     return JSON.parse(row.body);
   }
   private save(id:string,state:GuardState){this.store.db.prepare('INSERT OR REPLACE INTO guard_tasks VALUES(?,?)').run(id,JSON.stringify(state));}
+  private ruleHit(action:string,args:unknown):string|null {
+    const table=this.store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='guard_rules'").get();
+    if(!table) return null;
+    const enabled=(this.store.db.prepare('SELECT body FROM guard_rules').all() as {body:string}[])
+      .map(r=>JSON.parse(r.body) as {status:string;kind:string;value:string|null})
+      .filter(r=>r.status==='ENABLED');
+    for(const rule of enabled) if(ruleMatches(rule,action,args)) return 'ENABLED_RULE_'+rule.kind;
+    return null;
+  }
   finish(id:string){const s=this.state(id);if(s.status==='ACTIVE'){s.status='FINISHED';this.save(id,s);}}
   stop(id:string){const s=this.state(id);s.status='STOPPED';this.save(id,s);}
   private async model(id:string,c:AgentConfig,prompt:string,schema:z.ZodType,signal:AbortSignal):Promise<any>{
@@ -67,7 +94,7 @@ export class Guard {
     const activitySequence=initial.activities.length;
     this.observe(id,'verdict.action_proposed',{sequence:activitySequence,action,argumentsDigest:argDigest,...(action==='request_verified_state'?{serviceId:(args as {serviceId:string}).serviceId}:{}),...(action==='replay_evidence'?{evidenceId:(args as {evidenceId:string}).evidenceId,targetId:(args as {targetId:string}).targetId}:{})});
     let reviewError:GuardDecision['reviewError'];
-    let reason=hardCheck(),verdict:GuardDecision['verdict']=reason?'BLOCK':'ALLOW';
+    let reason=hardCheck()??this.ruleHit(action,args),verdict:GuardDecision['verdict']=reason?'BLOCK':'ALLOW';
     try{
       if(!reason&&['start_task','request_verified_state','replay_evidence','external_material'].includes(action)){
         const review=await this.model(id,c,JSON.stringify({trustedTask:initial.trustedTask,boundary:initial.boundary,action,args,behaviorHistory:initial.activities.filter(a=>a.sequence<activitySequence).slice(-12).map(a=>({sequence:a.sequence,action:a.action,source:a.source,status:a.status,argumentsDigest:digest(a.args),resultDigest:a.resultDigest??null})),executionFacts,executionContract:{effectiveAccount:initial.boundary.conditions.account,effectiveBlockHash:initial.boundary.conditions.blockHash,selectedCandidateAllowed:action==='request_verified_state'?initial.boundary.conditions.candidateIds.includes((args as {serviceId:string}).serviceId):null,deliveryMustPassIndependentCryptographicVerifier:true,serviceNameCannotModifyAccountOrBlock:true}}),z.strictObject({verdict:z.enum(['ALLOW','BLOCK','UNCERTAIN']),reasonCode:z.string().regex(/^[A-Z0-9_]{1,100}$/)}),signal);
@@ -75,7 +102,7 @@ export class Guard {
       }
     }catch(e){verdict='UNCERTAIN';reason='REVIEW_UNAVAILABLE';reviewError=e instanceof AgentFailure?e.reason:'MODEL_ERROR';}
     this.store.transaction(()=>{
-      const current=this.state(id), violation=hardCheck();
+      const current=this.state(id), violation=hardCheck()??this.ruleHit(action,args);
       if(signal.aborted||current.status!=='ACTIVE'||digest(current.boundary)!==boundaryDigest||digest(args)!==argDigest||violation){verdict='BLOCK';reason=violation??'STALE_AUTHORIZATION';}
       const decision:GuardDecision={...(actionId?{actionId}:{}),...(reviewError?{reviewError}:{}),sequence:activitySequence,action,argumentsDigest:argDigest,boundaryDigest,ruleVersion:'guard-v1',verdict,reasonCode:reason??'HARD_RULES_PASSED',consumed:false,latencyMs:Date.now()-started};
       // Enabled candidates are additive diagnostics only. Core constraints always apply.
@@ -99,10 +126,24 @@ export class Guard {
     const s=this.state(id),activity=s.activities.find(a=>a.sequence===sequence);
     if(activity){activity.status='EXECUTED';activity.resultDigest=digest(result);this.save(id,s);this.observe(id,'verdict.action_executed',{sequence,action:activity.action,resultDigest:activity.resultDigest});}
   }
+  // Imported telemetry is audit context only. It never creates a decision or permit.
+  ingest(id:string,entries:{action:string;args:unknown}[]) {
+    return this.store.transaction(()=>{
+      const state=this.state(id);
+      if(state.activities.length+entries.length>500) throw new ApiError(422,'ACTIVITY_LIMIT');
+      const sequences:number[]=[];
+      for(const entry of entries){
+        state.activities.push({sequence:state.activities.length+1,action:entry.action,args:entry.args,source:'EXTERNAL',status:'EXECUTED',resultDigest:digest(entry.args)});
+        sequences.push(state.activities.length);
+      }
+      this.save(id,state);
+      return sequences;
+    });
+  }
   consume(id:string,sequence:number,action:string,args:unknown,hardCheck:()=>string|null,signal:AbortSignal){
     this.store.transaction(()=>{
       const s=this.state(id),d=s.decisions.find(d=>d.sequence===sequence);
-      if(!d||s.status!=='ACTIVE'||signal.aborted||d.consumed||d.verdict!=='ALLOW'||d.action!==action||d.argumentsDigest!==digest(args)||d.boundaryDigest!==digest(s.boundary)||d.ruleVersion!=='guard-v1'||hardCheck())throw new AgentFailure('GUARD_STOPPED');
+      if(!d||s.status!=='ACTIVE'||signal.aborted||d.consumed||d.verdict!=='ALLOW'||d.action!==action||d.argumentsDigest!==digest(args)||d.boundaryDigest!==digest(s.boundary)||d.ruleVersion!=='guard-v1'||hardCheck()||this.ruleHit(action,args))throw new AgentFailure('GUARD_STOPPED');
       d.consumed=true;this.save(id,s);this.observe(id,'verdict.permit_consumed',{sequence,action,argumentsDigest:d.argumentsDigest});
     });
   }

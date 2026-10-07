@@ -61,7 +61,7 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 
 新增 [“360”异常评测](docs/17-360异常评测.md)：30 条场景，新增 20 条盲测的确定性路径全通过；GLM 首轮 18/20 完整通过，7 个替换场景全成功。模型超时与复验缺陷如实记录，保护结果和模型完成率分开统计。后续修正超时适配后，四条历史失败路径[定向复验通过](docs/18-模型超时适配与复验.md)。
 
-**已知安全缺口：** [红队测试](docs/19-红队攻击测试.md)复现了首次任务绑定可被恶意模型改变账户／区块／本次预算／候选范围。真实 GLM 本轮 5 条抵御、1 条无法判定；14 项 HTTP／证据攻击抵御。该范围缺口尚未修复，不能宣称全面防提示注入。
+**显式约束路径已修复（TEST_TRANSPORT 已复验）：** [红队测试](docs/19-红队攻击测试.md)曾复现首次任务绑定可被恶意模型改变账户／区块／本次预算／候选范围。现按 [013 决定](docs/decisions/013-structured-constraint-locking.md) 实现结构化约束锁定：调用方 `constraints` 提交即校验、`start_task` 绑定前边界逐字段强制；红队受控回归 6/6 RESISTED（含四例范围突破），`test:guard` 20 项通过。真实 GLM 本轮 5 条抵御、1 条无法判定；14 项 HTTP／证据攻击抵御。LIVE 注入复跑完成前，仍不宣称全面防提示注入。 未传 `constraints` 的自然语言入口仍依赖独立审查模型提取授权范围。
 
 ## 已完成
 
@@ -101,6 +101,8 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 
 仓库公开，欢迎查看、Fork、Issue 和 PR；按 [CONTRIBUTING](CONTRIBUTING.md) 与模块规则协作，保留他人的工作。私钥和未审阅运行材料不进版本库。自有代码采用 [MIT](LICENSE)，依赖见 [THIRD_PARTY](THIRD_PARTY.md)。
 
+贡献者：[@CodeGanHaoZ](https://github.com/CodeGanHaoZ) 在 [PR #10](https://github.com/hankesong/Verdict-Agent/pull/10) 贡献了外审产品设计、结构化范围约束、telemetry 适配、规则增强、监控台与威胁账本。完整贡献历史见 [Contributors](https://github.com/hankesong/Verdict-Agent/graphs/contributors)。
+
 ## Verdict Guard（开发中）
 
 已接入独立任务边界、PI 执行前外审与范围硬拦截；未配置 `guard` 时直接 PI 入口不可用，固定流程仍可运行且未启用外审。安全报告／规则 API 与本地维护命令已加入。GLM 5.3＋DeepSeek 曾完成真实替换验收；最新按用户选择改为 GLM 5.3 执行与独立 GLM 5.3 行为外审，同模型首次联调在第三次审查时耗尽 180 秒预算，尚未完成替换；语义复验仅为独立模型判断，规则启用使用本地维护命令，见 [实现与限制](docs/20-Verdict-Guard.md)。
@@ -120,3 +122,5 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 ## Agent 活动图
 
 主前端新增 `#activity`：按具体动作展开提议、外审、执行与验收节点，提供三个录制回放 DEMO，也可从任务页查看实时任务。回放不发起任何交付，原始模型来源明确标记。交互、只读 API、数据来源和运行命令见 [活动图说明](docs/22-Agent活动图.md)。
+
+PR #10 增加外审监控台、威胁账本和 `@earendil-works/pi-telemetry@1.0.4` 摘要导出／外部活动导入。启用的攻击签名规则在调用模型前硬拦截；主线的活动图与钱包审查入口保持可用。见 [模型外审产品 PRD](docs/21-模型外审产品PRD.md)。

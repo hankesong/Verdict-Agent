@@ -2,6 +2,7 @@ import { GraphStore } from "./graph-store.js";
 import { Observability } from "./observability.js";
 import { GuardReports } from "./guard-reports.js";
 import { Guard, boundaryViolation } from "./guard.js";
+import { parseTelemetryImport, telemetryFromTask } from "./guard-telemetry.js";
 import { z } from "zod";
 import { digest } from "@verdict/core";
 import { fetch_json } from "@verdict/observations";
@@ -229,6 +230,9 @@ export class AgentService {
     const c = this.config();
     const request = CreateAgentRunSchema.parse(raw);
     if (!this.engine.config.guard || !process.env[this.engine.config.guard.apiKeyEnv]) throw new ApiError(503,"GUARD_NOT_CONFIGURED");
+    // Structured caller constraints are the trusted this-run scope; reject unsupported or over-budget
+    // scopes at submission instead of letting the executor bind a substituted task (red-team FR-G01).
+    if (request.constraints) this.validateConditions(request.constraints);
     const a: AgentSnapshot = {
       apiVersion: AGENT_API_VERSION,
       agentId: newId(),
@@ -643,6 +647,13 @@ export class AgentService {
                       ],
                     };
                   const conditions = this.validateConditions(raw);
+                  // Invariant independent of the review hook: a locked boundary can never be expanded
+                  // at binding time, even if authorization ordering changes in future refactors.
+                  if (
+                    boundary &&
+                    boundaryViolation(boundary.conditions, conditions)
+                  )
+                    throw new AgentFailure("GUARD_STOPPED");
                   if (a.runId) {
                     if (
                       !boundConditions ||
@@ -915,6 +926,7 @@ export class AgentService {
             const observedRun=a.runId?this.engine.store.run(a.runId):null;
             const executionFacts=observedRun?{runStatus:observedRun.status,adopted:!!observedRun.accepted,spentWei:observedRun.spentWei,attempts:observedRun.attempts.map(attempt=>({serviceId:attempt.serviceId,status:attempt.status,runtimeReason:attempt.runtimeReason,evidenceId:attempt.evidenceId,verdict:attempt.verification?.verdict??null}))}:null;
             const reviewStart=performance.now(),previousCount=this.guard.state(id).decisions.length;
+            const previousRequests=this.guard.state(id).usage.requests;
             const reviewerKind=hardCheck()||!['start_task','request_verified_state','replay_evidence'].includes(name)?'HARD_RULE':'MODEL';
             this.graph.append(id,action,'REVIEW','RUNNING',{reviewerKind});
             try{
@@ -922,7 +934,8 @@ export class AgentService {
               if(sequence)permits.set(name,{sequence,check:hardCheck});
             }finally{
               const decision=this.guard.state(id).decisions[previousCount];
-              this.graph.append(id,action,'REVIEW',decision?.verdict??'UNCERTAIN',{reviewerKind,reasonCode:decision?.reviewError??decision?.reasonCode??'REVIEW_UNAVAILABLE',durationMs:performance.now()-reviewStart});
+              const actualReviewerKind=this.guard.state(id).usage.requests>previousRequests?'MODEL':'HARD_RULE';
+              this.graph.append(id,action,'REVIEW',decision?.verdict??'UNCERTAIN',{reviewerKind:actualReviewerKind,reasonCode:decision?.reviewError??decision?.reasonCode??'REVIEW_UNAVAILABLE',durationMs:performance.now()-reviewStart});
             }
             gate();
           },
@@ -970,6 +983,51 @@ export class AgentService {
       this.graph.finish(id);
     }
   }
+  // FR-G07: 外审监控台数据源。聚合最近受 Guard 保护的 agent 与其外审状态；旧路径（无
+  // Guard 记录的草案流程）如实显示为未受审，不伪造结论。
+  guardTasks() {
+    return {
+      tasks: this.store.agents().map((a) => {
+        let g: ReturnType<Guard["state"]> | null = null;
+        try {
+          g = this.guard.state(a.agentId);
+        } catch {
+          g = null;
+        }
+        const decisions = g?.decisions ?? [];
+        const reviewWaitMs = decisions.length
+          ? Math.round(
+              decisions.reduce((sum, d) => sum + d.latencyMs, 0) /
+                decisions.length,
+            )
+          : null;
+        return {
+          agentId: a.agentId,
+          runId: a.runId,
+          status: a.status,
+          modelStatus: a.modelStatus,
+          modelId: a.modelId,
+          modelSource: a.modelSource,
+          error: a.error,
+          createdAt: a.createdAt,
+          finishedAt: a.finishedAt,
+          usage: a.usage,
+          guard: g
+            ? {
+                status: g.status,
+                boundarySource: g.boundary?.source ?? null,
+                activities: g.activities.length,
+                decisions: decisions.length,
+                blocked: decisions.filter((d) => d.verdict === "BLOCK").length,
+                lastReasonCode: decisions.at(-1)?.reasonCode ?? null,
+                reviewWaitMs,
+                reviewerUsage: g.usage,
+              }
+            : null,
+        };
+      }),
+    };
+  }
   stop(id: string) {
     const a = this.store.agent(id);
     if (a.status === "RUNNING" || a.status === "QUEUED") {
@@ -978,6 +1036,19 @@ export class AgentService {
       this.jobs.get(id)?.controller.abort();
     }
     return this.store.agent(id);
+  }
+  // FR-G02: pi-telemetry adapter. Export renders the activity/decision ledger as
+  // vendor-neutral spans; import accepts third-party spans as EXTERNAL ledger entries.
+  guardTelemetry(id: string) {
+    return telemetryFromTask(id, this.guard.state(id));
+  }
+  guardTelemetryImport(id: string, raw: unknown) {
+    const spans = parseTelemetryImport(raw);
+    const sequences = this.guard.ingest(
+      id,
+      spans.map((s) => ({ action: "telemetry." + s.name, args: s })),
+    );
+    return { ingested: sequences.length, sequences };
   }
   async close() {
     this.closing = true;
