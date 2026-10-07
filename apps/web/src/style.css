@@ -1594,3 +1594,176 @@ dd {
 .tl-row.model { border-color: #d8a29a; background: #fbf1ef; }
 .tl-row.warn { border-color: #e0d2a8; background: #faf4e4; }
 .tl-row.ok { border-color: var(--line, #e2e5dc); }
+
+/* Guard pages: keep copy, lists and import controls clear of the card edges. */
+#view-monitor .evidence-list-panel > .hint,
+#view-threats .evidence-list-panel > .hint {
+  margin: 10px 18px 16px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+#view-monitor #monitor-list,
+#view-threats #threats-list {
+  padding: 0 18px;
+}
+#view-threats #threats-list > h3 {
+  margin: 16px 0 10px;
+  line-height: 1.5;
+}
+#view-threats #threats-list > .hint {
+  margin: 10px 0 16px;
+  line-height: 1.75;
+}
+#view-threats .import-box {
+  margin: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+#view-threats .import-box textarea {
+  display: block;
+  width: 100%;
+  min-height: 140px;
+  padding: 12px;
+  border: 1px solid #dce3d6;
+  border-radius: 6px;
+  background: #fbfcf8;
+  color: var(--ink);
+  font: 11px/1.65 "SFMono-Regular", Consolas, monospace;
+  resize: vertical;
+}
+#view-threats .import-box textarea:focus {
+  outline: 2px solid #cf9a70;
+  outline-offset: 1px;
+}
+#view-threats #threat-import-submit {
+  margin-top: 10px;
+}
+#view-threats #threat-import-result,
+#view-threats #threat-detail pre,
+#view-monitor #monitor-detail pre {
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+#view-monitor .evidence-list-panel .panel-heading,
+#view-threats .evidence-list-panel .panel-heading {
+  gap: 12px;
+}
+#view-monitor .evidence-list-panel .panel-heading h2,
+#view-threats .evidence-list-panel .panel-heading h2 {
+  min-width: 0;
+  line-height: 1.5;
+}
+
+/* Wallet review: one inset content area for labels, status and actions. */
+.wallet-body {
+  padding: 20px 23px 0;
+}
+.wallet-body > .hint {
+  margin: 0 0 18px;
+  line-height: 1.75;
+}
+.wallet-body > label {
+  margin-bottom: 16px;
+}
+.wallet-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: -2px 0 14px;
+}
+.wallet-actions .text-button {
+  padding: 8px 0;
+}
+#wallet-session {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #e7ecdf;
+  border-radius: 6px;
+  background: #f8faf5;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+#wallet-config {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-left: 3px solid #d7b18d;
+  background: #fbf7f0;
+  color: #7c715f;
+  font-size: 11px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+#wallet-form fieldset {
+  min-width: 0;
+}
+#wallet-form label {
+  margin-bottom: 15px;
+}
+#wallet-form .primary-button {
+  width: 100%;
+  margin-top: 5px;
+}
+#wallet-cancel {
+  margin-top: 8px;
+}
+.wallet-body .footnote {
+  margin: 14px 0 20px;
+  line-height: 1.8;
+}
+.wallet-audit-panel #wallet-result {
+  padding: 22px 24px 8px;
+  color: #62736b;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.wallet-audit-panel #wallet-result > p {
+  margin: 0 0 14px;
+}
+.wallet-audit-panel #wallet-result details {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid #e5eadf;
+  border-radius: 6px;
+  background: #fbfcf9;
+}
+.wallet-audit-panel #wallet-result summary {
+  cursor: pointer;
+  line-height: 1.6;
+}
+.wallet-audit-panel #wallet-result pre {
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+.wallet-audit-panel #wallet-error {
+  margin: 0 24px 20px;
+  color: #ae7152;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1150px) {
+  .wallet-body {
+    padding: 20px 18px 0;
+  }
+  .wallet-audit-panel #wallet-result {
+    padding: 20px 18px 8px;
+  }
+  .wallet-audit-panel #wallet-error {
+    margin-right: 18px;
+    margin-left: 18px;
+  }
+}
+@media (max-width: 680px) {
+  .wallet-body {
+    padding: 18px 20px 0;
+  }
+  .wallet-audit-panel #wallet-result {
+    padding: 18px 20px 8px;
+  }
+}

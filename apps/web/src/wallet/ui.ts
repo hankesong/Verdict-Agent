@@ -4,17 +4,17 @@ import { escape as e } from '../view';
 import { discoverWallets, GuardedWallet, type WalletChoice } from './provider';
 const wei=(value:string)=>{if(!/^(0|[1-9][0-9]*)(\.[0-9]{1,18})?$/.test(value))throw Error('请输入最多 18 位小数的非负金额');const [whole,fraction='']=value.split('.');return BigInt(whole)*10n**18n+BigInt(fraction.padEnd(18,'0'));};
 export function mountWalletUI(root:HTMLElement) {
-  root.innerHTML=`<div class="task-layout"><section class="panel task-panel"><div class="panel-heading"><h2>钱包交易审查</h2><span class="step">BEFORE SIGNING</span></div>
+  root.innerHTML=`<div class="task-layout wallet-layout"><section class="panel task-panel wallet-panel"><div class="panel-heading"><h2>钱包交易审查</h2><span class="step">BEFORE SIGNING</span></div><div class="wallet-body">
   <p class="hint">仅保护经本页发起的交易。先检查实际参数和预执行结果，再交给钱包确认签名。</p>
-  <label>选择钱包<select id="wallet-provider"><option value="">未发现浏览器钱包</option></select></label><button class="secondary-button" id="wallet-connect">连接钱包</button> <button class="text-button" id="wallet-disconnect">断开本页连接</button>
+  <label>选择钱包<select id="wallet-provider"><option value="">未发现浏览器钱包</option></select></label><div class="wallet-actions"><button class="secondary-button" id="wallet-connect">连接钱包</button><button class="text-button" id="wallet-disconnect">断开本页连接</button></div>
   <p id="wallet-session" class="hint">尚未连接。不会读取私钥或助记词。</p><p id="wallet-config" role="status">正在读取审查配置…</p>
   <form id="wallet-form"><fieldset id="wallet-fields" disabled><label>收款地址<input id="wallet-recipient" spellcheck="false" required placeholder="0x…"></label>
   <label>原生币数量<input id="wallet-amount" value="0.0001" inputmode="decimal" required></label>
   <label>最高总网络费（原生币）<input id="wallet-fee" value="0.001" inputmode="decimal" required></label>
   <button class="primary-button" type="submit">审查并提交钱包 →</button></fieldset></form>
   <button class="text-button" id="wallet-cancel" disabled>取消当前审查</button>
-  <p class="footnote">首版支持无代码账户之间的原生币转账。代币授权、合约调用和消息签名尚不支持放行。钱包内修改交易会脱离本次审查；请核对钱包最终展示。</p></section>
-  <section class="panel audit-panel"><div class="panel-heading"><h2>交易检查过程</h2><span class="step">PI REVIEW</span></div><div id="wallet-result" aria-live="polite">连接钱包后填写交易，审查通过才会弹出钱包。</div><p id="wallet-error" role="alert"></p></section></div>`;
+  <p class="footnote">首版支持无代码账户之间的原生币转账。代币授权、合约调用和消息签名尚不支持放行。钱包内修改交易会脱离本次审查；请核对钱包最终展示。</p></div></section>
+  <section class="panel audit-panel wallet-audit-panel"><div class="panel-heading"><h2>交易检查过程</h2><span class="step">PI REVIEW</span></div><div id="wallet-result" aria-live="polite">连接钱包后填写交易，审查通过才会弹出钱包。</div><p id="wallet-error" role="alert"></p></section></div>`;
   const $=<T extends HTMLElement=HTMLElement>(id:string)=>root.querySelector<T>('#'+id)!;
   let meta:ReturnType<typeof WalletMetaSchema.parse>|null=null,busy=false;
   const choices=new Map<string,WalletChoice>();
