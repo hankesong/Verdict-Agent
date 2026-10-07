@@ -57,7 +57,7 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 
 ## 简易前端与 Agent 框架
 
-运行 `npm run web` 打开 [验收工作台](http://127.0.0.1:5173)：提交任务、查看错误替换与逐项检查、浏览服务观测、下载证据、发起第二实例复验和比较历史证据排序。网页使用 TypeScript + Vite，详见 [前端说明](apps/web/README.md)。
+运行 `npm run web` 打开 [验收控制台](http://127.0.0.1:5173)。前端已于 2026-10-08 整体重做（[018 决定](docs/decisions/018-frontend-redo.md)），由九个站点组成：任务登记、交付追踪、证据封存、独立复验、候选与观测、Agent 执行、动作轨迹、外审与报告、钱包审查。另有工程抽屉，记录真实接口流水，并按 JSON Pointer 定位原始证据中的字段。网页使用 TypeScript + Vite，详见 [前端说明](apps/web/README.md)。
 
 底层使用 **PI agent-core / pi-ai 1.0.4** 的真实工具循环。按用户最新要求，输入任务后直接执行，PI 选服务、处理失败并调用复验；网页没有草案确认步骤。共享执行器强制 A 核验、预算和原子采用。**GLM 5.3 真实接口已跑通错误替换至 PASS 与全失败停止**；模型费用未知。配置、实际结果与限制见 [PI 接入与复验](docs/15-PI接入与复验.md)，[30 条场景数据集](fixtures/agent/README.md) 可按固定哈希复跑。
 
@@ -77,7 +77,7 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 | B 真实观测 | 两家公共 RPC 的近期与历史探测；LIVE、FROZEN、FAULT_INJECTION 分组；不支持、429、超时、HTTP 错误分开 |
 | B 发布边界 | 与 verdict 分离的状态与原子队列；默认未接入，测试失败／幂等重试已验证，无伪造链上成功 |
 | B Agent 工具 | 严格工具参数、候选／验收／下载／导入／复验；`guard` 只交付本次 accepted 值，失败停止业务依赖 |
-| 简易前端 | 三个实际 API 视图、逐项审计、停止路径、原文件下载、独立复验与真实排序对照；7 条浏览器测试通过（含 PI 流程，模型为测试传输） |
+| 验收控制台 | 九个站点接入真实 API：替换与停止路径动画、逐项审计与证据定位、原文件下载、第二实例复验与排序对照、篡改副本导入被拒、PI 与 Guard、钱包审查；14 条浏览器测试通过（PI 模型为测试传输） |
 | PI 编排 | 直接接收任务、绑定条件后的六个业务工具、独立模型状态／用量／事件、取消／中断；18 项 PI 集成测试通过，真实模型联调状态见上文 |
 | 验证与接力 | A 48 项＋B 26 项＋PI 18 项测试、类型检查、实际五进程演示；函数工具示例、跨平台脚本和双平台 CI（远端结果见 Actions） |
 
@@ -123,6 +123,6 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 
 ## Agent 活动图
 
-主前端新增 `#activity`：按具体动作展开提议、外审、执行与验收节点，提供三个录制回放 DEMO，也可从任务页查看实时任务。回放不发起任何交付，原始模型来源明确标记。交互、只读 API、数据来源和运行命令见 [活动图说明](docs/22-Agent活动图.md)。
+动作轨迹站点 `#activity`（重做后改为自绘 SVG）：按具体动作展开提议、外审、执行与验收节点，提供三个录制回放 DEMO，也可从 Agent 执行站点查看实时任务。回放不发起任何交付，原始模型来源明确标记。交互、只读 API、数据来源和运行命令见 [活动图说明](docs/22-Agent活动图.md)。
 
 PR #10 增加外审监控台、威胁账本和 `@earendil-works/pi-telemetry@1.0.4` 摘要导出／外部活动导入。启用的攻击签名规则在调用模型前硬拦截；主线的活动图与钱包审查入口保持可用。见 [模型外审产品 PRD](docs/21-模型外审产品PRD.md)。

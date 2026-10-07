@@ -56,29 +56,81 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code = "",
   ) {
     super(message);
   }
 }
+
+// Read-only request log for the engineering drawer. It records what the page sent and received; it never alters calls.
+export interface ApiLogEntry {
+  id: number;
+  at: number;
+  method: string;
+  base: string;
+  path: string;
+  status: number | null;
+  ms: number | null;
+  body?: unknown;
+  response?: unknown;
+  error?: string;
+}
+const listeners = new Set<(entry: ApiLogEntry) => void>();
+let sequence = 0;
+export const onApiLog = (fn: (entry: ApiLogEntry) => void) => {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+};
+const emit = (entry: ApiLogEntry) => {
+  for (const fn of listeners) fn(entry);
+};
 export async function request(
   base: string,
   path: string,
   body?: unknown,
   timeoutMs = 20000,
 ): Promise<unknown> {
-  const res = await fetch(base + path, {
+  const entry: ApiLogEntry = {
+    id: ++sequence,
+    at: Date.now(),
     method: body === undefined ? "GET" : "POST",
-    headers: body === undefined ? {} : { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  const data = await res.json();
-  if (!res.ok)
-    throw new ApiError(
-      res.status,
-      `HTTP ${res.status} · ${typeof data.error === "string" ? data.error : "请求失败"}`,
-    );
-  return data;
+    base,
+    path,
+    status: null,
+    ms: null,
+    body,
+  };
+  emit(entry);
+  const started = performance.now();
+  try {
+    const res = await fetch(base + path, {
+      method: entry.method,
+      headers: body === undefined ? {} : { "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const data = await res.json();
+    entry.status = res.status;
+    entry.ms = performance.now() - started;
+    entry.response = data;
+    emit(entry);
+    if (!res.ok) {
+      const code = typeof data.error === "string" ? data.error : "";
+      throw new ApiError(
+        res.status,
+        `HTTP ${res.status} · ${code || "请求失败"}`,
+        code,
+      );
+    }
+    return data;
+  } catch (error) {
+    if (entry.status === null) {
+      entry.ms = performance.now() - started;
+      entry.error = error instanceof Error ? error.message : String(error);
+      emit(entry);
+    }
+    throw error;
+  }
 }
 export async function replay(
   base: string,
@@ -98,6 +150,7 @@ export async function replay(
   }
   throw new Error("复验仍在处理，请稍后重试查询。");
 }
+export type ReplaySnapshot = Awaited<ReturnType<typeof replay>>;
 export async function download(
   base: string,
   id: string,
@@ -116,3 +169,20 @@ export async function download(
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+export function saveJson(value: unknown, name: string) {
+  const url = URL.createObjectURL(
+    new Blob([JSON.stringify(value, null, 2)], { type: "application/json" }),
+  );
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+export const port = (base: string) => {
+  try {
+    return ":" + (new URL(base).port || "80");
+  } catch {
+    return base;
+  }
+};

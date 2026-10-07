@@ -1,10 +1,10 @@
-# 简易审计前端
+# web：验收控制台
 
-使用 TypeScript + Vite 的三个视图，直接消费 B 的 HTTP API 和 `@verdict/protocol` schema。没有前端验签、固定 verdict、模拟通过开关或私钥；PI 模型仅在服务端运行。
+TypeScript + Vite，直接消费 B 的 HTTP API 和 `@verdict/protocol` schema。浏览器里不验签、不重算摘要、不判定证明，也没有模拟通过开关或私钥；PI 模型只在服务端运行。设计依据见 [018 决定](../../docs/decisions/018-frontend-redo.md)。
 
 ## 本地运行
 
-使用 Node 22.23.3，在仓库根目录：
+Node 22.23.3，在仓库根目录：
 
 ```bash
 npm ci --ignore-scripts
@@ -13,29 +13,40 @@ npm run dev:start
 npm run web
 ```
 
-打开 http://127.0.0.1:5173 。前端终端 Ctrl-C 停止；`npm run dev:stop` 停止 B 的五个演示进程，保留证据。`npm run build` 同时构建后端和网页；`npm run web:preview` 在相同端口预览 `apps/web/dist`。
+打开 http://127.0.0.1:5173 。默认后端为 3001，第二实例为 3002；如需改动，在启动或构建时设置 `VITE_PRIMARY_API`、`VITE_SECONDARY_API`（公开地址，不能带认证信息）。开发服务器只监听 127.0.0.1，并拒绝通过 `/@fs` 读取工作区的 `.local`、密钥、数据库和 `.git`。
 
-默认后端为 3001，第二实例为 3002。自定义时使用 `VITE_PRIMARY_API`、`VITE_SECONDARY_API` 环境变量，在启动或构建时提供；它们属于公开地址，不能放认证信息。改网页端口时同步后端 `corsOrigins`。所有本地服务器默认 loopback，开发服务器拒绝读取工作区 `.local`、私钥、数据库和 `.git`。
+## 结构
 
-## 已实现
+- `src/main.ts`：外壳。顶栏显示两个实例的连接状态和可信上下文；站点路线上的包裹会滑到当前站点；数字键 1–9 跳站，`` ` `` 开关工程抽屉。
+- `src/drawer.ts`：工程抽屉，记录页面实际发出的请求和响应，并按 JSON Pointer 在原始证据包中高亮字段。
+- `src/stations/`：九个站点。
 
-- 任务验收：从后端读取 context／检查点／账户，可选字段、候选、历史开关及预算；展示实际调用、替换、停止、采用值与逐项 checks。
-- 服务目录：声明能力、来源标签、范围／窗口／样本数、实际观测和排序理由；可触发真实公共 RPC 探测。
-- 证据复验：索引、原包／manifest 下载、文件完整性和独立发布状态；在第二实例导入并重验，展示重算结论、上下文比较以及历史开关的真实排序对照。
-- 网络恢复：提交响应丢失时重试同一个 requestId；已知任务轮询中断后锁定新提交并允许重新连接恢复；sessionStorage 仅记录当前任务 ID／尚未确认的请求。
-- 适配窄屏；所有服务／证据动态文本转义后显示。二次复验 COMPLETED 不显示为数据 PASS。
+| 站点 | 内容 | 主要接口 |
+| --- | --- | --- |
+| 01 任务登记 | TaskSpec 表单与请求预览；同一 requestId 原样重放与改参重放（409）；响应丢失时重试同一请求 | `POST /api/runs` |
+| 02 交付追踪 | 场景一键运行；路线图上的包裹、核验盖章、拒收退回、证据条码与最新在上的事件轨迹；第二实例自动复验（仅限本页发起的运行） | `/api/runs`、`/api/evidence`、第二实例 `/api/evidence/import`、`/api/replays` |
+| 03 证据封存 | manifest 标签、条码与证据码；逐项检查及证据位置；下载原始 bundle 与 manifest | `/api/evidence/:id`、`/bundle`、`/manifest` |
+| 04 独立复验 | 第二实例或本机重算；历史证据开关前后的排序对照；篡改副本后导入被拒；命令行复验指引 | 第二实例 `/api/evidence/import`、`/api/replays`、`/api/selection` |
+| 05 候选与观测 | 声明能力与实测指标分开展示；实时 RPC 观测；排序对照 | `/api/services`、`/api/observations`、`/api/selection` |
+| 06 Agent 执行 | PI 自然语言任务、执行过程、绑定条件、运行结果与 Guard 决定 | `/api/agent/*`、`/api/guard/tasks/:id` |
+| 07 动作轨迹 | 三个录制回放（不调用接口）与按游标增量读取的实时图 | `/api/agent/runs/:id/graph` |
+| 08 外审与报告 | 受监任务时间线（硬规则拦截与模型拦截分开）、签名安全报告的导出、导入、复验与规则候选 | `/api/guard/*` |
+| 09 钱包审查 | 浏览器钱包签名前审查；服务器不签名、不广播 | `/api/wallet/*` |
 
-## 验证与边界
+`src/graph/model.ts` 与 `src/wallet/provider.ts` 是业务逻辑，`tests/integration/` 也在使用，修改时需要一起跑集成测试。
+
+## 验证
 
 ```bash
 npx playwright install chromium
 npm run test:e2e
 ```
 
-七条浏览器测试启动隔离的真实 A/B 服务和 SQLite，覆盖错误替换、全部失败、原文件下载、第二实例复验／排序、页面刷新、丢失响应幂等重试、手机布局、后端不可用与私有文件访问隔离。测试用后端 3101/3102，前端 5174，不复用开发实例。CI 同样执行。
+14 条浏览器测试使用隔离的真实 A/B 服务和 SQLite（前端 5174，后端 3101/3102），覆盖范围见 [e2e 说明](../../tests/e2e/README.md)。
 
-当前是简易本地界面。可信检查点／授权来自后端配置；已增加 PI 自然语言直接执行与工具过程展示，不提供通用聊天；没有钱包、链上发布写入、文件上传导入器或完整任务历史搜索。存证 adapter／合约尚未实现；默认如实显示 not_requested。原包已超过首次导入有效期时，需要操作者配置受信历史评估时间，页面不会替包自行授权。
+## 尚未实现
 
-PI 入口需要服务端显式配置；未配置时保留原固定流程。使用 `npm run pi:configure` 生成本地模型配置，API 密钥只在服务端环境中提供。PI 过程、模型错误／用量及 RunSnapshot 分开显示。详细操作见 [PI 说明](../../docs/15-PI接入与复验.md)。
-
-活动图位于 `#activity`，使用局部懒加载 React Flow，回放和实时模式共用同一归并器。`#activity?agent=ID` 连接只读增量接口。数据来源、运行与测试见 [说明](../../docs/22-Agent活动图.md)。
+- 链上存证 adapter 和合约：发布状态如实显示 `not_requested`。
+- 证据码只显示文本 URI，没有二维码。
+- 篡改挑战中“修改后重新封签”的进阶关卡需要服务端接口，目前没有。
+- 历史任务检索。
