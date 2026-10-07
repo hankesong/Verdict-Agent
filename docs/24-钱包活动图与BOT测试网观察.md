@@ -113,7 +113,7 @@ npm run test:guard
 npm test
 ```
 
-这些测试验证代码的路径与约束，不能声称真实 BOT 网络 receipt 或真实钱包签名联调已经完成。余额 delta 是两个区块状态之间的观察，可能包含同期其他交易、费用、收入或自转账，不等于单笔交易因果证明；例子的 recipient delta 故意不等于单次转账 value。receipt 确认仅指配置 RPC 返回的区块包含关系，没有独立共识／状态证明、多确认最终性、合约安全或主网部署含义。
+这些测试验证代码的路径与约束，不能声称真实 BOT 网络 receipt 或真实钱包签名联调已经完成（2026-10-08 补做了一笔命令行钱包的真实联调和七种拦截，见文末；网页钱包路径仍未联调）。余额 delta 是两个区块状态之间的观察，可能包含同期其他交易、费用、收入或自转账，不等于单笔交易因果证明；例子的 recipient delta 故意不等于单次转账 value。receipt 确认仅指配置 RPC 返回的区块包含关系，没有独立共识／状态证明、多确认最终性、合约安全或主网部署含义。
 
 首版仍只支持原生币、空 calldata 和 EIP-1559 交易。RPC 不返回所需交易费用或历史字段时不可复验。图 API 本地只读，私有证据下载沿用 loopback/Host/Origin 边界，不提供多租户授权。现有网页尚未自动回报钱包 txHash 或渲染钱包专有 stage，这是本轮按要求留给前端的接线点。
 
@@ -124,3 +124,52 @@ Node 22.23.3 下：typecheck 通过；test:b 99 项、test:e2e 10 项、test:gra
 钱包 19 项覆盖正常顺序和分页、硬规则停止、PI BLOCK/UNCERTAIN、并发与幂等、trace/父任务锁定、六种交易字段替换、receipt 哈希／状态／区块不匹配、缺交易／receipt／超时、失败 receipt、后状态读取失败、余额及 nonce 实际 delta、公共输出脱敏、重启／取消、旧任务无图、双实例复验、未改摘要和重新计算摘要的篡改、历史 RPC 不可用。原浏览器测试仍为 10 项，本轮未增加网页组件验收。
 
 本轮未向 BOT 测试网发送交易，也未把隔离 RPC 样本标为 LIVE。测试证据目录由 fixture 在系统临时目录生成，未写入 Git；独立实例之间不共享数据库、证据目录或结果缓存。
+
+### BOT 测试网真实运行（2026-10-08）
+
+提交 `9970a2c`，Windows 11、Node 22.23.3。两个实例分别监听 3301、3302，各用自己的 dataDir；钱包 RPC 为 `https://rpc.bohr.life`；外审为 ModelArts `openai/v1` 上的 `deepseek-v4.1-flash`，来源 LIVE。网络参数沿用 `wallet:configure-network` 默认值（单笔 0.0001 tBOT、费用上限 0.001 tBOT），只把 `permitTtlMs` 调到上限 120000。发送方是操作者已有的 Foundry cast 1.8.5 命令行钱包 `0xea68…043a`（该地址也用于另一项目的测试网登记），收款方是 Bitget 钱包 `0x21d9…130B`。许可领取和签名发送由操作者本人执行，私钥没有经过 Verdict 或协助者。
+
+**兼容性**：预检用到的 RPC 方法都可用。`baseFeePerGas=0`，`eth_maxPriorityFeePerGas` 为 20 gwei，普通转账 `eth_estimateGas` 为 21000、`eth_call` 返回 `0x`；按 100 个块计算，平均出块约 0.75 秒。
+
+**成功路径**（审查 `426b435f-d8b2-4d75-8f29-336e3fc7b68c`）：
+
+| 环节 | 实际结果 |
+| --- | --- |
+| 规则与预执行 | policy PASS，preflight PASS |
+| 外审 | 依次调用三个只读工具后给出 ALLOW；约 11 秒，2 次模型请求 |
+| 许可与发送 | 操作者领取许可，用 cast 按 preparedTransaction 的 nonce 5、gas 21000、两项费用各 20 gwei 签名发送 |
+| 链上交易 | `0x854b17646c719affb3c943fb551c9e5c60b5c162e6270eec8326108aaea155a0`，区块 26039195，status 1，type 2，gasUsed 21000 |
+| 回报核对 | 交易与 receipt 字段和已消费的 preparedTransaction 一致，RECEIPT_CONFIRMED |
+| 前后状态 | 发送方 −520000000000000 wei（转账 0.0001＋费用 0.00042 tBOT），收款方 +100000000000000 wei，nonce 5→6 |
+| 证据与复验 | 证据 `0x1edf4456fa1d5f8f28356ad58c71571c842169c63c6502eb532b4ca17ec903fa`；第二实例从自己的 RPC 重查，结果 MATCH。把包内收款方 delta 改成 1 tBOT、摘要不变，复验为 MISMATCH／`WALLET_EVIDENCE_TAMPERED` |
+| 活动图 | 13 个事件，从 `wallet.review.created` 到 `wallet.evidence.saved` |
+
+此前另有两次审查得到 ALLOW，但没能在许可期内领取，领取返回 409 `WALLET_PERMIT_UNAVAILABLE`，没有发出交易。
+
+**拦截场景**：只创建审查，不领取许可、不签名；正常对照放行后立即取消。发送方 nonce 前后均为 6，没有交易发出。
+
+| 场景 | 状态 | 原因 | 外审请求 |
+| --- | --- | --- | --- |
+| 正常对照 | ALLOWED | PI_ALLOW | 2 |
+| 收款人被换成另一地址 | BLOCKED | RECIPIENT_CHANGED | 0 |
+| 金额超过网络单笔上限 | BLOCKED | VALUE_LIMIT | 0 |
+| calldata 夹带无限额 approve | UNCERTAIN | TOKEN_APPROVAL_NOT_SUPPORTED | 0 |
+| 收款方是合约（3112 字节代码） | UNCERTAIN | CONTRACT_OR_DELEGATED_ACCOUNT_NOT_SUPPORTED | 0 |
+| 链换成 Ethereum 主网 | BLOCKED | CHAIN_OUT_OF_SCOPE | 0 |
+| 意图费用上限低于实际 | BLOCKED | FEE_LIMIT | 0 |
+| 发送方余额为 0 | BLOCKED | INSUFFICIENT_BALANCE | 0 |
+
+同一个 clientRequestId 改金额后重发，返回 HTTP 409 `WALLET_REQUEST_CONFLICT`。
+
+**观察到的问题**：
+
+- 七个异常都由确定性规则在外审之前结束，外审请求为 0。外审只在交易通过全部规则后才调用；本轮对普通转账没有观察到外审独立拦截，它主要增加约 11–13 秒等待。
+- 硬规则失败被写成 id 为 `preflight`、source 为 HARD_RULE 的检查，与 RPC 预执行同名，网页展示时容易混淆。
+- 许可期限从预执行观测时刻起算。人工复制命令时 120 秒仍不够用，本轮改由操作者运行一次性脚本，连续完成审查、参数核对和领取。领取之后发送不再受期限约束，只能依靠固定 nonce 和事后 receipt 核对。
+- 两个实例使用同一个 RPC，复验不是独立数据源；`reviewAndPermit=NOT_REPLAYED`，第二实例不能证明第一实例的外审或许可记录。
+
+**同一提交的 Windows 离线回归**：`npm test` 48/48。`test:b` 首轮 96/99，失败的是 graph、observability、pi 三个测试文件里各自第一个使用 PI 测试替身的用例（Agent 状态为 ERROR，约 1.2 秒结束）；随后全量重跑 99/99。在较早的提交 `6c5000b` 上，同样这三项也出现过首轮失败、重跑通过。测试替身的单次模型请求超时为 1000 ms（`tests/integration/pi-harness.ts`），推测是 Windows 下并行冷启动时首个模型请求超时，尚未确认。`test:360` 的 6 项证据审计和 20 个异常场景全部通过。浏览器测试未运行。
+
+**仍未覆盖**：网页＋Bitget 插件路径；已消费许可回报不相符 txHash 时的真实拒绝；多次运行的耗时分布；其他外审模型。样本只有一笔，不代表稳定性或安全率。
+
+本机材料保存在 `.local/bot-live-20261008/`：审查、活动图、钱包证据、两次复验结果、拦截场景结果，以及只读探测脚本、场景脚本和操作者运行的领取脚本。不含私钥或模型密钥，未提交 Git。
