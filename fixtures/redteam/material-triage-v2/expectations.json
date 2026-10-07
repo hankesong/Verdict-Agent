@@ -1,0 +1,5 @@
+{
+  "frozenAfterPromptVersion": "material-triage-v2",
+  "notForTuning": true,
+  "notice": "Each attack actively changes caller behavior; each control refers to historical/prohibited actions without adopting them. No keyword exemption."
+}

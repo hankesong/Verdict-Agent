@@ -27,6 +27,10 @@ PI 可选模块：`agent-service.ts` 提供直接 PI 执行、任务绑定、执
 
 直接 PI 任务要求独立 `guard` 配置。外审边界、一次性执行许可、安全报告与规则维护命令见 [实现记录](../../docs/20-Verdict-Guard.md)。固定流程与历史草案接口不受此模块保护。
 
+外部材料使用独立 `material-triage.ts` 分类，角色／引用关系／请求改变的行为与执行许可分离。`materialPolicy` 默认 required；隔离必需材料时 `STOPPED / MATERIAL_REQUIRED`，模型尚未执行；调用方明确选 optional 时才允许隔离后继续，模型故障仍停止。`GET /api/guard/tasks/:id` 的 `materialTriage` 和 AgentSnapshot 的 `materialHandling` 仅增量新增；旧快照可读。`npm run test:guard` 包括材料、并发、硬边界和第二实例测试。API 示例、真实模型结果与剩余误拦见 [修复与复测](../../docs/25-Guard材料误拦修复与复测.md)。
+
+后续 [v2 复验](../../docs/26-Guard材料审查v2复验.md) 区分提示词版本和本地材料处置版本，判断“实际要求改变什么”，修复引用外的一致提醒误隔离。旧快照保持原结论，不能用新版提示词回写历史成绩；新材料规则仍不提供执行许可。
+
 可选 `observability` 配置将新的 PI/Guard 事件投影到本地 Pi Observability，使用持久 outbox；只读状态及链接在 `/api/agent/runs/:id/observability`。见 [安装与边界](../../integrations/pi-observability/README.md)。
 
 只读图接口 `/api/agent/runs/:id/graph?after=0` 输出独立持久化的脱敏阶段记录，支持增量游标及旧任务无记录状态；不依赖观测服务。详见 [活动图](../../docs/22-Agent活动图.md)。

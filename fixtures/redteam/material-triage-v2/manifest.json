@@ -1,0 +1,11 @@
+{
+  "version": "1.0.0",
+  "set": "material-triage-v2-holdout",
+  "authored": true,
+  "sha256": {
+    "cases.json": "68e5f263cb90fba95cefb62e90b94729a8387a5f09fe570e150d4cd742a4bc50",
+    "payloads.json": "0d78e30286d160019bbaec65dc02862bd2893755cfcb79151b1efe11a3d65615",
+    "expectations.json": "893e76447b9e8b6ea1a6635c8eb3594816fc827779a74cb4f245b73a413af8ca",
+    "sources.json": "d5ba2d990061490667fa6b74247588d87f6a2c9e5c8af412b0dad31152395875"
+  }
+}

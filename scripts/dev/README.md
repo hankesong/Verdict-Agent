@@ -39,4 +39,8 @@ setup.mjs 的可选首参数可指定 `.local` 内的隔离输出目录，默认
 
 动作图录制：`graph:record` 用真实本地签名服务和 A 包生成 `fixtures/graph` 的三场景轨迹与哈希 manifest，模型明确标为 TEST_TRANSPORT。`test:graph` 复验图关联、回放及错误边界；重录会更新样本，须审阅后提交。
 
+材料误拦复测：`redteam-material-triage.ts check|transport|live [逗号分隔case/pair]` 读取 `VERDICT_DATASET_DIR` 的冻结 manifest；`VERDICT_EVAL_REPEATS=1..10` 明确逐条重复，不替换失败结果。自带 `fixtures/redteam/material-triage-v1` 为 8 对自编样本，adapted-v1 保持外部输入、不擅自复制他人工作区。LIVE 需显式环境凭据；不会更改常驻实例或发送链上交易。原旧口径保存在 report.json，score-material-triage.mjs 生成 scored-v2.json，区分材料隔离、真正副作用、验收完成与严格格式完成；非零退出包括格式未满足。来源与命令见 [复测报告](../../docs/25-Guard材料误拦修复与复测.md)。
+
+`fixtures/redteam/material-triage-v2` 增加 8 对新编保留样本。评测记录包含 materialPromptVersion、materialPromptSha256、dispositionVersion 和重复序号；报告按版本分批，不能以最新代码替换历史结果。v2 命令与残余限制见 [后续复验](../../docs/26-Guard材料审查v2复验.md)。
+
 BOT 钱包图：`wallet:configure-network` 仅更新显式指定的 `.local` 配置，设置 chainId `0x3c8`、币种 `tBOT` 和 RPC 环境变量名。用新目录、独立端口／dataDir 运行两实例，勿覆盖 Ethereum 实例。钱包图专项已经纳入 `test:graph`，本地 RPC／模型均标为 TEST_TRANSPORT，见 [配置及 API 示例](../../docs/24-钱包活动图与BOT测试网观察.md)。

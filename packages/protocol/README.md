@@ -13,3 +13,7 @@ A 包共享协议已实现。版本：schemaVersion `1.0.0`、ruleVersion `eth-a
 直接 PI 会话使用 `CreateAgentRunSchema`；AgentSnapshot 的 1.1.0 允许绑定前 runId=null、直接执行 draftId=null，并兼容旧 1.0.0 快照。B 通用 API 与 A 签名／证据版本不变。详见 [PI 说明](../../docs/15-PI接入与复验.md)。
 
 MODEL_RESPONSE 是新增 Agent 事件类型，其数据使用 ModelRequestTimingSchema，仅包含耗时／状态／计数；严格事件消费者需同步共享包。A 签名和证据格式不变。
+
+材料审查增量新增 `MaterialAssessment`、`MaterialTriageRecord`、AgentSnapshot 可选 `materialHandling`、原因码 `MATERIAL_REQUIRED`。CreateAgentRun 的 `materialPolicy` 默认为 required，可由调用方明确设 optional；缺省与显式 required 使用同一请求摘要，并兼容旧幂等记录。旧快照无需补字段；旧严格客户端接收新字段／枚举需同步协议。分类为 READ_AS_DATA 不代表任何动作许可，A 格式与验收语义不变。见 [材料误拦修复](../../docs/25-Guard材料误拦修复与复测.md)。
+
+MaterialTriageRecord.promptVersion 兼容 `material-triage-v1` 和 `material-triage-v2`；新任务使用 v2，旧记录不自动重新审查。可选 dispositionVersion 标记 `material-disposition-v2`，缺省表示旧处置规则；新规则只增量允许明确 ALLOW、DATA/REFERENCE、REQUESTED、NONE 的一致提醒作为不可信数据读取，不改变执行授权。只接受已知版本。见 [v2 复验](../../docs/26-Guard材料审查v2复验.md)。
