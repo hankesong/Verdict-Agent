@@ -36,3 +36,7 @@ PI 可选模块：`agent-service.ts` 提供直接 PI 执行、任务绑定、执
 只读图接口 `/api/agent/runs/:id/graph?after=0` 输出独立持久化的脱敏阶段记录，支持增量游标及旧任务无记录状态；不依赖观测服务。详见 [活动图](../../docs/22-Agent活动图.md)。
 
 钱包后端现有审查之外增加广播哈希核对、receipt 与历史状态观察，图 API `/api/wallet/reviews/:id/graph` 只输出脱敏事件。`wallet-observation.ts` 负责配置 RPC 的一致性检查；`wallet-evidence.ts` 单独保存本地观察包并独立重算，永不使用 A 的 Ethereum 证据目录／采用状态。见 [运行与 API](../../docs/24-钱包活动图与BOT测试网观察.md)。
+
+钱包后端 v2 新增浏览器会话版本、逐次手写完成声明的绑定与一次性消费；配置后可审查固定代码哈希的 ERC-20 transfer/approve，并以真实 RPC 模拟核对效果。创建请求必须使用 `wallet-review-v2`，旧前端需要适配，当前未完成新网页签名流程。API、配置、错误边界与验证见 [钱包后端 v2](../../docs/27-钱包后端v2.md)。专项 `npm run test:wallet`；可选本地真实 EVM `npm run verify:wallet:evm`。
+
+staging 增加 `/override`（仅模型拒绝／不确定且确定性检查完成）、完整 calldata 回报绑定、代币 receipt 事件及历史余额／allowance 观察、`wallet-observation-v2` 独立复验。硬规则仍不可覆盖，详见 [020](../../docs/decisions/020-staging-risk-and-token-receipts.md)。

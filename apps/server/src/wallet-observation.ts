@@ -6,7 +6,7 @@ export class WalletObservationFailure extends Error {
 }
 export const botChainId='0x3c8';
 const blockSchema=z.object({number:WalletQuantitySchema,hash:WalletHashSchema});
-const rpcTxSchema=z.object({hash:WalletHashSchema,from:WalletAddressSchema,to:WalletAddressSchema,chainId:WalletQuantitySchema.optional(),value:WalletQuantitySchema,nonce:WalletQuantitySchema,input:z.literal('0x'),gas:WalletQuantitySchema,maxFeePerGas:WalletQuantitySchema,maxPriorityFeePerGas:WalletQuantitySchema,blockNumber:WalletQuantitySchema.nullable(),blockHash:WalletHashSchema.nullable(),authorizationList:z.array(z.unknown()).max(0).optional(),accessList:z.array(z.unknown()).max(0).optional()});
+const rpcTxSchema=z.object({hash:WalletHashSchema,from:WalletAddressSchema,to:WalletAddressSchema,chainId:WalletQuantitySchema.optional(),value:WalletQuantitySchema,nonce:WalletQuantitySchema,input:z.string().regex(/^0x(?:[0-9a-f]{2})*$/).max(32770),gas:WalletQuantitySchema,maxFeePerGas:WalletQuantitySchema,maxPriorityFeePerGas:WalletQuantitySchema,blockNumber:WalletQuantitySchema.nullable(),blockHash:WalletHashSchema.nullable(),authorizationList:z.array(z.unknown()).max(0).optional(),accessList:z.array(z.unknown()).max(0).optional()});
 export async function checkedTransaction(ask:WalletRpc,prepared:PreparedWalletTransaction,txHash:string){
   if(prepared.chainId!==botChainId||await ask('eth_chainId',[])!==botChainId)throw new WalletObservationFailure('RPC_CHAIN_MISMATCH',true);
   const raw=await ask('eth_getTransactionByHash',[txHash]);
@@ -14,7 +14,7 @@ export async function checkedTransaction(ask:WalletRpc,prepared:PreparedWalletTr
   const parsed=rpcTxSchema.safeParse(raw);
   if(!parsed.success)throw new WalletObservationFailure('RPC_TRANSACTION_INVALID');
   const tx=parsed.data;
-  if(tx.hash!==txHash||(tx.chainId!==undefined&&tx.chainId!==prepared.chainId)||tx.from!==prepared.from||tx.to!==prepared.to||tx.value!==prepared.value||tx.nonce!==prepared.nonce||tx.gas!==prepared.gas||tx.maxFeePerGas!==prepared.maxFeePerGas||tx.maxPriorityFeePerGas!==prepared.maxPriorityFeePerGas||prepared.data!=='0x')throw new WalletObservationFailure('BROADCAST_TRANSACTION_MISMATCH',true);
+  if(tx.hash!==txHash||(tx.chainId!==undefined&&tx.chainId!==prepared.chainId)||tx.from!==prepared.from||tx.to!==prepared.to||tx.value!==prepared.value||tx.nonce!==prepared.nonce||tx.gas!==prepared.gas||tx.maxFeePerGas!==prepared.maxFeePerGas||tx.maxPriorityFeePerGas!==prepared.maxPriorityFeePerGas||tx.input!==prepared.data)throw new WalletObservationFailure('BROADCAST_TRANSACTION_MISMATCH',true);
   return WalletObservedTransactionSchema.parse({...prepared,hash:tx.hash,blockNumber:tx.blockNumber,blockHash:tx.blockHash});
 }
 export async function checkedReceipt(ask:WalletRpc,tx:Awaited<ReturnType<typeof checkedTransaction>>,before:WalletStateObservation){

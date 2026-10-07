@@ -76,6 +76,9 @@ export function start_server(config: ServerConfig, launchId = "foreground") {
       }
       const path = new URL(req.url ?? "/", "http://localhost").pathname;
       if(req.method==='GET'&&path==='/api/wallet/meta'){send(res,200,wallet.info());return;}
+      if(req.method==='POST'&&path==='/api/wallet/sessions'){send(res,201,wallet.sessions.create(await body(req)));return;}
+      const walletSessionRoute=path.match(/^\/api\/wallet\/sessions\/([\w-]+)$/);
+      if(walletSessionRoute&&req.method==='POST'){send(res,200,wallet.updateSession(walletSessionRoute[1],await body(req)));return;}
       if(req.method==='POST'&&path==='/api/wallet/reviews'){send(res,202,wallet.create(await body(req)));return;}
       if(req.method==='POST'&&path==='/api/wallet/evidence/replay'){send(res,200,await wallet.replayEvidence(await body(req)));return;}
       const walletEvidenceRoute=path.match(/^\/api\/wallet\/evidence\/(0x[0-9a-f]{64})$/);
@@ -84,10 +87,12 @@ export function start_server(config: ServerConfig, launchId = "foreground") {
       if(req.method==='GET'&&walletGraphRoute){const query=new URL(req.url!,'http://localhost').searchParams;send(res,200,agents.graph.walletPage(walletGraphRoute[1],Number(query.get('after')??0),Number(query.get('limit')??200)));return;}
       const receiptRecheck=path.match(/^\/api\/wallet\/reviews\/([\w-]+)\/receipt\/recheck$/);
       if(req.method==='POST'&&receiptRecheck){z.strictObject({}).parse(await body(req));send(res,200,await wallet.recheckReceipt(receiptRecheck[1]));return;}
-      const walletRoute=path.match(/^\/api\/wallet\/reviews\/([\w-]+)(?:\/(consume|cancel|broadcast))?$/);
+      const walletRoute=path.match(/^\/api\/wallet\/reviews\/([\w-]+)(?:\/(confirm|override|consume|cancel|broadcast))?$/);
       if(walletRoute){
         const [,id,action]=walletRoute;
         if(req.method==='GET'&&!action){send(res,200,wallet.get(id));return;}
+        if(req.method==='POST'&&action==='confirm'){send(res,200,wallet.confirm(id,await body(req)));return;}
+        if(req.method==='POST'&&action==='override'){send(res,200,wallet.overrideRisk(id,await body(req)));return;}
         if(req.method==='POST'&&action==='consume'){send(res,200,await wallet.consume(id,await body(req)));return;}
         if(req.method==='POST'&&action==='cancel'){z.strictObject({}).parse(await body(req));send(res,200,wallet.cancel(id));return;}
         if(req.method==='POST'&&action==='broadcast'){send(res,200,await wallet.broadcast(id,await body(req)));return;}

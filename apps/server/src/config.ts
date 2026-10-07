@@ -8,6 +8,7 @@ import {
   ProvenanceModeSchema,
   VerificationContextSchema,
   parse_json_strict,
+  WalletAddressSchema, WalletHashSchema,
   type VerificationContext,
 } from "@verdict/protocol";
 
@@ -69,11 +70,21 @@ export const WalletConfigSchema = z.strictObject({
     rpcUrlEnv: z.string().regex(/^[A-Z_][A-Z0-9_]*$/),
     maxValueWei: DecimalSchema, maxTotalFeeWei: DecimalSchema,
     nativeSymbol: z.string().min(1).max(12).optional(),
+    tokens: z.array(z.strictObject({
+      address: WalletAddressSchema, codeHash: WalletHashSchema,
+      maxTransferAmount: DecimalSchema, maxApprovalAmount: DecimalSchema,
+      approvedSpenders: z.array(WalletAddressSchema).max(64).default([]),
+    })).max(64).default([]).refine(v => new Set(v.map(t => t.address)).size === v.length),
   })).min(1).max(8).refine(v => new Set(v.map(n => n.chainId)).size === v.length),
   rpcTimeoutMs: z.number().int().min(100).max(15000).default(8000),
   reviewTimeoutMs: z.number().int().min(100).max(180000).default(90000),
   permitTtlMs: z.number().int().min(100).max(120000).default(60000),
   observationSource: z.enum(['LIVE','TEST_TRANSPORT']).default('LIVE'),
+  contractCalls: z.strictObject({
+    enabled: z.boolean().default(false),
+    maxCalldataBytes: z.number().int().min(4).max(32770).default(4096),
+    allowedSelectors: z.array(z.enum(['0xa9059cbb','0x095ea7b3'])).default(['0xa9059cbb','0x095ea7b3']),
+  }).prefault({}),
 });
 export const ServerConfigSchema = z.strictObject({
   wallet: WalletConfigSchema.optional(),

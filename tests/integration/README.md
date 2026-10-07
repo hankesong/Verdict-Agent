@@ -11,3 +11,5 @@ PI 另有 18 项跨包测试：真实 PI SDK 和兼容 HTTP 传输测试替身�
 `npm run test:360` 增加 6 条证据审计（伪造报告、正文篡改、UI_MOCK、撤销授权、并发重复导入、过期跨时复验）及 20 条数据驱动异常。真实 HTTP 服务／内核／第二实例均运行；没有模型时不计入 LIVE_PI 完成率。
 
 PI 新增流式首事件／空闲／总时间、心跳与隐藏思考计时、总任务预算优先取消及 null 缺项参数测试。
+
+钱包后端 v2 由 `npm run test:wallet` 专项运行会话、确认、防重放、ERC-20 参数及状态模拟负例。`wallet-v2.test.ts` 的传输是故障可控的 TEST_TRANSPORT，另有 `npm run verify:wallet:evm` 验证真实本地 EVM，不能把两者或旧前端 provider mock 等同于浏览器插件实签。见 [27](../../docs/27-钱包后端v2.md)。

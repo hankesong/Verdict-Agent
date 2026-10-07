@@ -111,7 +111,7 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 
 ## 钱包签名前审查
 
-新增“钱包审查”页面：连接浏览器钱包后，普通原生币转账会先经过确定性参数检查、配置 RPC 预执行和 PI 自动审查，只有一次性短时许可通过后才调用钱包签名。服务器不持有私钥、不广播交易；合约调用、代币授权、permit 和第三方 DApp 交易暂未放行。配置与限制见 [钱包签名前审查](docs/23-钱包签名前审查.md)。2026-10-08 已在 BOT 测试网用命令行钱包完成一笔真实转账的审查、回报核对与第二实例复验，并实测七种拦截；网页钱包路径尚未联调，记录见 [docs/24](docs/24-钱包活动图与BOT测试网观察.md)。
+钱包后端已升级为 v2：会话版本、原生币预审、配置内 ERC-20 转账／授权模拟，以及签名前逐次确认。服务器不持有私钥、不广播交易。**现有钱包页面尚未适配 v2 会话与手写确认，旧创建请求会被拒绝**；API 接线、配置与实际范围见 [钱包后端 v2](docs/27-钱包后端v2.md)。`npm run test:wallet` 运行专项检查，`npm run verify:wallet:evm` 运行另行安装本地工具后的真实 EVM 验证。此前 BOT 原生币的一笔命令行钱包实测仍见 [24](docs/24-钱包活动图与BOT测试网观察.md)，不代表新增合约路径或网页插件实签已经完成。
 
 ## PI 行为看板
 
@@ -126,3 +126,5 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 主前端新增 `#activity`：按具体动作展开提议、外审、执行与验收节点，提供三个录制回放 DEMO，也可从任务页查看实时任务。回放不发起任何交付，原始模型来源明确标记。交互、只读 API、数据来源和运行命令见 [活动图说明](docs/22-Agent活动图.md)。
 
 PR #10 增加外审监控台、威胁账本和 `@earendil-works/pi-telemetry@1.0.4` 摘要导出／外部活动导入。启用的攻击签名规则在调用模型前硬拦截；主线的活动图与钱包审查入口保持可用。见 [模型外审产品 PRD](docs/21-模型外审产品PRD.md)。
+
+当前 `staging` 后端还支持有界的用户风险继续，以及已配置 ERC-20 的交易回执、余额／授权观察和独立复验。前端接线与公开网络验证仍需分别完成，见 [staging 后端决定](docs/decisions/020-staging-risk-and-token-receipts.md)。

@@ -6,6 +6,7 @@ export const WalletQuantitySchema = z.string().regex(/^0x(?:0|[1-9a-f][0-9a-f]{0
 export const WalletLinkIdSchema = z.string().uuid();
 export const WalletHashSchema = z.string().regex(/^0x[0-9a-f]{64}$/);
 const Amount = z.string().regex(/^(0|[1-9][0-9]{0,77})$/).refine(v => BigInt(v) < 2n ** 256n);
+const FunctionSelector = z.string().regex(/^0x[0-9a-f]{8}$/);
 export const WalletTransactionSchema = z.strictObject({
   chainId: WalletQuantitySchema, from: WalletAddressSchema, to: WalletAddressSchema,
   value: WalletQuantitySchema, data: z.string().regex(/^0x(?:[0-9a-f]{2})*$/).max(32770),
@@ -14,11 +15,35 @@ export const PreparedWalletTransactionSchema = WalletTransactionSchema.extend({
   nonce: WalletQuantitySchema, gas: WalletQuantitySchema,
   maxFeePerGas: WalletQuantitySchema, maxPriorityFeePerGas: WalletQuantitySchema,
 });
-export const WalletIntentSchema = z.strictObject({
+const IntentBase = {
   account: WalletAddressSchema, chainId: WalletQuantitySchema, recipient: WalletAddressSchema,
-  maxValueWei: Amount, maxTotalFeeWei: Amount, operation: z.literal('native_transfer'),
+  maxValueWei: Amount, maxTotalFeeWei: Amount,
+};
+export const ContractActionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({kind: z.literal('erc20_transfer'), recipient: WalletAddressSchema, amount: Amount}),
+  z.strictObject({kind: z.literal('erc20_approve'), spender: WalletAddressSchema, amount: Amount}),
+]);
+export const NativeWalletIntentSchema = z.strictObject({...IntentBase, operation: z.literal('native_transfer')});
+export const ContractWalletIntentSchema = z.strictObject({...IntentBase, operation: z.literal('contract_call'), functionSelector: FunctionSelector, contractAction: ContractActionSchema});
+export const WalletIntentSchema = z.discriminatedUnion('operation', [
+  NativeWalletIntentSchema,
+  ContractWalletIntentSchema,
+]);
+export const ConnectWalletSessionSchema = z.strictObject({
+  account: WalletAddressSchema, chainId: WalletQuantitySchema,
+  providerId: z.string().min(1).max(128).regex(/^[\w.-]+$/),
+});
+export const UpdateWalletSessionSchema = ConnectWalletSessionSchema.extend({
+  revision: z.number().int().positive(), connected: z.boolean(),
+});
+export const WalletSessionSchema = ConnectWalletSessionSchema.extend({
+  sessionId: WalletLinkIdSchema, revision: z.number().int().positive(), connected: z.boolean(),
+  createdAt: z.number().int(), updatedAt: z.number().int(),
+  authority: z.literal('CLIENT_DECLARED'),
 });
 export const CreateWalletReviewSchema = z.strictObject({
+  schemaVersion: z.literal('wallet-review-v2'),
+  walletSessionId: WalletLinkIdSchema, walletSessionRevision: z.number().int().positive(),
   clientRequestId: z.string().min(1).max(100).regex(/^[\w-]+$/),
   transaction: WalletTransactionSchema, intent: WalletIntentSchema,
   traceId: WalletLinkIdSchema.optional(), parentAgentId: WalletLinkIdSchema.optional(), graphRunId: WalletLinkIdSchema.optional(),
@@ -52,8 +77,22 @@ export const WalletPostStateSchema = z.strictObject({
   receiptStatus:z.enum(['SUCCESS','FAIL']),blockNumber:WalletQuantitySchema,blockHash:WalletHashSchema,
   source:z.literal('RPC_OBSERVATION'),confirmation:z.literal('RECEIPT_CONFIRMED'),
 });
+export const WalletTokenStateSchema = z.strictObject({
+  blockNumber: WalletQuantitySchema, blockHash: WalletHashSchema,
+  values: z.array(Amount).min(1).max(2),
+});
+export const WalletTokenPostStateSchema = z.strictObject({
+  token: WalletAddressSchema, owner: WalletAddressSchema, counterparty: WalletAddressSchema,
+  operation: z.enum(['erc20_transfer','erc20_approve']), amount: Amount,
+  before: WalletTokenStateSchema, after: WalletTokenStateSchema,
+  deltas: z.array(z.string().regex(/^-?[0-9]+$/)).min(1).max(2),
+  receiptEvent: z.enum(['MATCH','MISMATCH','NOT_EXPECTED']),
+  stateComparison: z.enum(['MATCH','DIFFERENT','NOT_EXECUTED']),
+  source: z.literal('RPC_OBSERVATION'), scope: z.literal('BLOCK_RANGE_NOT_TRANSACTION_CAUSAL'),
+});
 export const WalletReviewSchema = z.strictObject({
-  schemaVersion: z.literal('wallet-review-v1'), reviewId: z.string(), clientRequestId: z.string(),
+  schemaVersion: z.enum(['wallet-review-v1','wallet-review-v2']), reviewId: z.string(), clientRequestId: z.string(),
+  walletSessionId: WalletLinkIdSchema.optional(), walletSessionRevision: z.number().int().positive().optional(),
   traceId: WalletLinkIdSchema.optional(), parentAgentId: WalletLinkIdSchema.optional(), graphRunId: WalletLinkIdSchema.optional(),
   inputDigest: z.string(), transactionDigest: z.string().nullable(),
   transaction: WalletTransactionSchema, intent: WalletIntentSchema,
@@ -68,32 +107,61 @@ export const WalletReviewSchema = z.strictObject({
   broadcastStatus: z.literal('NOT_BROADCAST_BY_SERVER'),
   receiptReport: WalletReceiptReportSchema.optional(),
   postState: WalletPostStateSchema.optional(),
+  tokenPostState: WalletTokenPostStateSchema.optional(),
   evidenceRef:WalletHashSchema.optional(),
+  // One challenge per review; confirmation records are set only after explicit client acknowledgement.
+  confirmationNonce: WalletLinkIdSchema.optional(),
+  userConfirmedAt: z.number().int().positive().optional(),
+  userConfirmationDigest: WalletHashSchema.optional(),
+  userOverride: z.strictObject({
+    at: z.number().int().positive(), reasonCode: z.string().regex(/^[A-Z0-9_]{1,80}$/),
+    confirmationDigest: WalletHashSchema,
+  }).optional(),
 });
 export const ConsumeWalletReviewSchema = z.strictObject({transaction: PreparedWalletTransactionSchema});
+export const ConfirmWalletReviewSchema = z.strictObject({
+  transactionDigest: WalletHashSchema,
+  account: WalletAddressSchema,
+  chainId: WalletQuantitySchema,
+  confirmationNonce: WalletLinkIdSchema,
+  walletSessionId: WalletLinkIdSchema, walletSessionRevision: z.number().int().positive(),
+  // An adapter declaration, never proof of the person's identity or of a physical gesture.
+  handwritingAcknowledged: z.literal(true),
+});
+export const OverrideWalletReviewSchema = ConfirmWalletReviewSchema.extend({
+  acknowledgement: z.literal('CONTINUE_WITH_RISK'),
+});
 export const BroadcastWalletReviewSchema = z.strictObject({txHash:z.string().regex(/^0x[0-9a-fA-F]{64}$/)});
 export const WalletMetaSchema = z.strictObject({
-  configured:z.boolean(), reason:z.string(), supportedOperations:z.array(z.literal('native_transfer')),
+  configured:z.boolean(), reason:z.string(), supportedOperations:z.array(z.enum(['native_transfer','contract_call'])),
   networks:z.array(z.strictObject({chainId:WalletQuantitySchema, name:z.string(), maxValueWei:Amount, maxTotalFeeWei:Amount, nativeSymbol:z.string().optional(), ready:z.boolean()})),
+  reviewSchemaVersion: z.literal('wallet-review-v2').optional(),
+  confirmationRequired: z.boolean().optional(),
 });
 export type WalletTransaction = z.infer<typeof WalletTransactionSchema>;
 export type PreparedWalletTransaction = z.infer<typeof PreparedWalletTransactionSchema>;
 export type WalletIntent = z.infer<typeof WalletIntentSchema>;
 export type WalletReview = z.infer<typeof WalletReviewSchema>;
 export type WalletCheck = z.infer<typeof WalletCheckSchema>;
+export type WalletSession = z.infer<typeof WalletSessionSchema>;
 export type WalletReceiptReport = z.infer<typeof WalletReviewSchema>['receiptReport'];
 export type WalletPostState = z.infer<typeof WalletReviewSchema>['postState'];
 
 // Local/private export for explicit exchange. Never put this packet in Agent Graph or A evidence.
-export const WalletEvidenceBodySchema = z.strictObject({
+const WalletEvidenceV1Schema = z.strictObject({
   version:z.literal('wallet-observation-v1'),chainId:z.literal('0x3c8'),nativeSymbol:z.literal('tBOT'),
   walletReviewId:WalletLinkIdSchema,traceId:WalletLinkIdSchema,
   observationSource:z.enum(['LIVE','TEST_TRANSPORT']),capturedAt:z.string().datetime(),
-  intent:WalletIntentSchema,preparedTransaction:PreparedWalletTransactionSchema,
+  intent:NativeWalletIntentSchema,preparedTransaction:PreparedWalletTransactionSchema,
   before:WalletStateObservationSchema,transaction:WalletObservedTransactionSchema,
   receipt:WalletObservedReceiptSchema,after:WalletStateObservationSchema,postState:WalletPostStateSchema,
   authority:z.literal('RPC_OBSERVATION_ONLY'),
 });
+const WalletEvidenceV2Schema = WalletEvidenceV1Schema.extend({
+  version: z.literal('wallet-observation-v2'), intent: ContractWalletIntentSchema,
+  tokenPostState: WalletTokenPostStateSchema,
+});
+export const WalletEvidenceBodySchema = z.discriminatedUnion('version',[WalletEvidenceV1Schema,WalletEvidenceV2Schema]);
 export const WalletEvidencePacketSchema=z.strictObject({evidenceRef:WalletHashSchema,body:WalletEvidenceBodySchema});
 export const ReplayWalletEvidenceSchema=z.strictObject({packet:WalletEvidencePacketSchema});
 export const WalletEvidenceReplaySchema=z.strictObject({
@@ -101,7 +169,9 @@ export const WalletEvidenceReplaySchema=z.strictObject({
   status:z.enum(['MATCH','MISMATCH','UNKNOWN']),reason:z.string(),
   authority:z.literal('RPC_OBSERVATION_ONLY'),reviewAndPermit:z.literal('NOT_REPLAYED'),
   observationSource:z.enum(['LIVE','TEST_TRANSPORT']),postState:WalletPostStateSchema.optional(),
+  tokenPostState: WalletTokenPostStateSchema.optional(),
 });
 export type WalletStateObservation=z.infer<typeof WalletStateObservationSchema>;
+export type WalletTokenPostState=z.infer<typeof WalletTokenPostStateSchema>;
 export type WalletEvidencePacket=z.infer<typeof WalletEvidencePacketSchema>;
 export type WalletEvidenceReplay=z.infer<typeof WalletEvidenceReplaySchema>;
