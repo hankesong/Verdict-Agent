@@ -53,7 +53,8 @@ export function mountModelSettings(root: HTMLElement) {
   function keyRequirement(role: ModelRole) {
     const changed = !!snapshot?.[role] && $<HTMLInputElement>(role + '-baseURL').value.trim() !== snapshot[role]!.baseURL;
     $<HTMLInputElement>(role + '-apiKey').required = !snapshot?.[role]?.hasApiKey || changed;
-    $(role + '-key-hint').textContent = changed ? '地址已更改，请填写新地址的密钥' : '密钥保存在服务端';
+    $(role + '-key-hint').textContent = changed ? '地址已更改，请填写新地址的密钥' : '';
+    $(role + '-key-hint').hidden = !changed;
   }
   function explain(error: unknown) {
     if (error instanceof ApiError) {
