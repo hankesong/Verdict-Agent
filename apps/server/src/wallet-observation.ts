@@ -8,7 +8,7 @@ export const botChainId='0x3c8';
 const blockSchema=z.object({number:WalletQuantitySchema,hash:WalletHashSchema});
 const rpcTxSchema=z.object({hash:WalletHashSchema,from:WalletAddressSchema,to:WalletAddressSchema,chainId:WalletQuantitySchema.optional(),value:WalletQuantitySchema,nonce:WalletQuantitySchema,input:z.string().regex(/^0x(?:[0-9a-f]{2})*$/).max(32770),gas:WalletQuantitySchema,maxFeePerGas:WalletQuantitySchema,maxPriorityFeePerGas:WalletQuantitySchema,blockNumber:WalletQuantitySchema.nullable(),blockHash:WalletHashSchema.nullable(),authorizationList:z.array(z.unknown()).max(0).optional(),accessList:z.array(z.unknown()).max(0).optional()});
 export async function checkedTransaction(ask:WalletRpc,prepared:PreparedWalletTransaction,txHash:string){
-  if(prepared.chainId!==botChainId||await ask('eth_chainId',[])!==botChainId)throw new WalletObservationFailure('RPC_CHAIN_MISMATCH',true);
+  if(await ask('eth_chainId',[])!==prepared.chainId)throw new WalletObservationFailure('RPC_CHAIN_MISMATCH',true);
   const raw=await ask('eth_getTransactionByHash',[txHash]);
   if(raw===null)throw new WalletObservationFailure('TX_NOT_FOUND');
   const parsed=rpcTxSchema.safeParse(raw);

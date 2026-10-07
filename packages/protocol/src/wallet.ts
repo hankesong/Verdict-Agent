@@ -207,7 +207,11 @@ const WalletEvidenceV2Schema = WalletEvidenceV1Schema.extend({
   version: z.literal('wallet-observation-v2'), intent: ContractWalletIntentSchema,
   tokenPostState: WalletTokenPostStateSchema,
 });
-export const WalletEvidenceBodySchema = z.discriminatedUnion('version',[WalletEvidenceV1Schema,WalletEvidenceV2Schema]);
+const WalletEvidenceV3Schema=WalletEvidenceV1Schema.extend({
+  version:z.literal('wallet-observation-v3'),chainId:WalletQuantitySchema,nativeSymbol:z.string().min(1).max(12),
+  intent:WalletIntentSchema,tokenPostState:WalletTokenPostStateSchema.optional(),
+}).refine(b=>(b.intent.operation==='contract_call')===(b.tokenPostState!==undefined)&&b.chainId===b.preparedTransaction.chainId&&b.chainId===b.intent.chainId);
+export const WalletEvidenceBodySchema = z.discriminatedUnion('version',[WalletEvidenceV1Schema,WalletEvidenceV2Schema,WalletEvidenceV3Schema]);
 export const WalletEvidencePacketSchema=z.strictObject({evidenceRef:WalletHashSchema,body:WalletEvidenceBodySchema});
 export const ReplayWalletEvidenceSchema=z.strictObject({packet:WalletEvidencePacketSchema});
 export const WalletEvidenceReplaySchema=z.strictObject({
@@ -221,3 +225,8 @@ export type WalletStateObservation=z.infer<typeof WalletStateObservationSchema>;
 export type WalletTokenPostState=z.infer<typeof WalletTokenPostStateSchema>;
 export type WalletEvidencePacket=z.infer<typeof WalletEvidencePacketSchema>;
 export type WalletEvidenceReplay=z.infer<typeof WalletEvidenceReplaySchema>;
+export const WalletFinalityObservationSchema=z.strictObject({
+  schemaVersion:z.literal('wallet-finality-v1'),reviewId:WalletLinkIdSchema,txHash:WalletHashSchema,checkedAt:z.number().int().positive(),
+  status:z.enum(['CONFIRMATIONS_MET','PENDING','REORG_DETECTED','UNKNOWN']),confirmations:z.string().regex(/^(0|[1-9][0-9]*)$/).nullable(),
+  requiredConfirmations:z.number().int().positive(),reason:z.string().max(160),authority:z.literal('RPC_OBSERVATION_ONLY'),
+});

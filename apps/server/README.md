@@ -44,3 +44,5 @@ staging 增加 `/override`（仅模型拒绝／不确定且确定性检查完成
 `GET /api/wallet/reviews` 提供筛选与键集分页，`GET /api/wallet/reviews/:id/actions` 投影当前可用操作；两者不触发 RPC／模型或写入。`wallet-history.ts` 负责摘要与查询，`WalletReviews.actions` 复用本地会话／策略／摘要校验。`verify:wallet:evm` 现覆盖本地测试驱动发送后的真实 EVM 回执与第二实例复验，后端仍不广播。前端交接见 [28](../../docs/28-staging钱包查询与操作接口.md)。
 
 `wallet-receipt-watch.ts` 保存独立回执跟踪队列；`POST /api/wallet/reviews/:id/receipt/watch` 显式启动，GET 查询，`/stop` 与 `/resume` 控制后续查询。复用原 recheck，不增加交易副作用，旧 DTO 不变。限额、重启恢复和前端接线见 [29](../../docs/29-回执跟踪队列.md)。
+
+`payment-defense.ts` 提供防御层授权／任务／提议／一次性执行凭证；`defense-auth.ts` 分离 OWNER、AGENT、EXECUTOR。启用 `defense` 后旧钱包写接口关闭，执行适配器使用 `examples/consumer/src/defense.ts`；材料摘要、差异、预算和多链 finality 约束见 [30](../../docs/30-Agent防御层API.md)。

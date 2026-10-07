@@ -30,3 +30,4 @@
 
 | [022](022-staging-backend-continuation.md) | staging 子分支接力 | 最近审查与可用操作接口，本地 EVM 回执／第二实例复验 |
 | [023](023-bounded-receipt-tracking.md) | 有界回执跟踪 | 显式队列、退避／限额、暂停恢复与重启持久化 |
+| [024](024-agent-defense-layer.md) | Agent 防御层 | 用户授权、Agent 提议、执行凭证、身份边界与多链观察 |

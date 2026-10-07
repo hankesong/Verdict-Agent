@@ -8,7 +8,7 @@ import {
   ProvenanceModeSchema,
   VerificationContextSchema,
   parse_json_strict,
-  WalletAddressSchema, WalletHashSchema,
+  WalletAddressSchema, WalletHashSchema, DefenseIdSchema, DefenseRoleSchema,
   type VerificationContext,
 } from "@verdict/protocol";
 
@@ -70,6 +70,8 @@ export const WalletConfigSchema = z.strictObject({
     rpcUrlEnv: z.string().regex(/^[A-Z_][A-Z0-9_]*$/),
     maxValueWei: DecimalSchema, maxTotalFeeWei: DecimalSchema,
     nativeSymbol: z.string().min(1).max(12).optional(),
+    receiptEnabled:z.boolean().optional(),
+    requiredConfirmations:z.number().int().min(1).max(1000).default(1),
     tokens: z.array(z.strictObject({
       address: WalletAddressSchema, codeHash: WalletHashSchema,
       maxTransferAmount: DecimalSchema, maxApprovalAmount: DecimalSchema,
@@ -95,6 +97,12 @@ export const WalletConfigSchema = z.strictObject({
   }).prefault({}),
 });
 export const ServerConfigSchema = z.strictObject({
+  defense:z.strictObject({
+    principals:z.array(z.strictObject({id:DefenseIdSchema,tenantId:DefenseIdSchema,role:DefenseRoleSchema,
+      accounts:z.array(WalletAddressSchema).max(32).default([]),tokenEnv:z.string().regex(/^[A-Z_][A-Z0-9_]*$/),disabled:z.boolean().default(false)})).min(1).max(128)
+      .refine(p=>new Set(p.map(x=>x.id)).size===p.length),
+    maxProposalsPerTask:z.number().int().min(1).max(1000).default(100),
+  }).optional(),
   wallet: WalletConfigSchema.optional(),
   observability:z.strictObject({
     endpoint:z.string().url().refine(value=>{const u=new URL(value);return u.protocol==='http:'&&['127.0.0.1','localhost'].includes(u.hostname)&&u.pathname==='/'&&!u.search&&!u.hash&&!u.username&&!u.password;},'Observer must be a loopback HTTP origin').transform(v=>v.replace(/\/$/,'')),

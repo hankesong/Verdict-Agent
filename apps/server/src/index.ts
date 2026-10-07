@@ -13,6 +13,8 @@ import {
 import { Engine } from "./engine.js";
 import { WalletReviews } from "./wallet.js";
 import { WalletReceiptWatches } from "./wallet-receipt-watch.js";
+import { PaymentDefense } from "./payment-defense.js";
+import { authenticateDefense,requireRole } from "./defense-auth.js";
 import { AgentService } from "./agent-service.js";
 import { ApiError } from "./store.js";
 import { type ServerConfig } from "./config.js";
@@ -55,6 +57,7 @@ export function start_server(config: ServerConfig, launchId = "foreground") {
   const agents = new AgentService(engine);
   const wallet = new WalletReviews(engine.store, config, agents.graph, agents.observer.record);
   const receiptWatches = new WalletReceiptWatches(engine.store, config, wallet);
+  const defense = config.defense?new PaymentDefense(engine.store,config,wallet,receiptWatches):undefined;
   let observationJob: Promise<unknown> | null = null;
   const server = createServer(async (req, res) => {
     try {
@@ -71,12 +74,58 @@ export function start_server(config: ServerConfig, launchId = "foreground") {
       }
       if (req.method === "OPTIONS") {
         res.setHeader("access-control-allow-methods", "GET,POST,OPTIONS");
-        res.setHeader("access-control-allow-headers", "content-type");
+        res.setHeader("access-control-allow-headers", "content-type,authorization");
         res.writeHead(204);
         res.end();
         return;
       }
       const path = new URL(req.url ?? "/", "http://localhost").pathname;
+      if(path.startsWith('/api/defense/')){
+        const p=authenticateDefense(config,req.headers.authorization),service=defense!;
+        const list=path.match(/^\/api\/defense\/(authorizations|tasks|proposals)$/);
+        if(list&&req.method==='GET'){send(res,200,service.list(p,list[1] as 'authorizations'|'tasks'|'proposals',new URL(req.url!,'http://localhost').searchParams));return;}
+        if(path==='/api/defense/meta'&&req.method==='GET'){send(res,200,{schemaVersion:'defense-api-v1',principal:{id:p.id,tenantId:p.tenantId,role:p.role},wallet:wallet.info()});return;}
+        if(path==='/api/defense/sessions'&&req.method==='POST'){send(res,201,service.createSession(p,await body(req)));return;}
+        const session=path.match(/^\/api\/defense\/sessions\/([\w-]+)$/);
+        if(session&&req.method==='POST'){send(res,200,service.updateSession(p,session[1],await body(req)));return;}
+        if(path==='/api/defense/authorizations'&&req.method==='POST'){send(res,201,service.createAuthorization(p,await body(req)));return;}
+        const auth=path.match(/^\/api\/defense\/authorizations\/([\w-]+)(?:\/(revise|revoke))?$/);
+        if(auth){
+          if(req.method==='GET'&&!auth[2]){const params=new URL(req.url!,'http://localhost').searchParams;const q=z.strictObject({version:z.string().regex(/^[1-9][0-9]*$/).transform(Number).pipe(z.number().int().safe()).optional()}).parse(Object.fromEntries(params));send(res,200,service.getAuthorization(p,auth[1],q.version));return;}
+          if(req.method==='POST'&&auth[2]){send(res,200,auth[2]==='revise'?service.reviseAuthorization(p,auth[1],await body(req)):service.revokeAuthorization(p,auth[1],await body(req)));return;}
+        }
+        if(path==='/api/defense/tasks'&&req.method==='POST'){send(res,201,service.createTask(p,await body(req)));return;}
+        const task=path.match(/^\/api\/defense\/tasks\/([\w-]+)(?:\/(cancel))?$/);
+        if(task){
+          if(req.method==='GET'&&!task[2]){send(res,200,service.viewTask(p,task[1]));return;}
+          if(req.method==='POST'&&task[2]){z.strictObject({}).parse(await body(req));send(res,200,service.cancelTask(p,task[1]));return;}
+        }
+        if(path==='/api/defense/proposals'&&req.method==='POST'){send(res,202,service.createProposal(p,await body(req)));return;}
+        const proposal=path.match(/^\/api\/defense\/proposals\/([\w-]+)(?:\/(confirm|override|consume|cancel|broadcast|audit|graph|evidence))?$/);
+        if(proposal){
+          const [,id,action]=proposal;
+          if(req.method==='GET'){
+            if(!action){send(res,200,service.viewProposal(p,id));return;}
+            if(action==='audit'){send(res,200,{events:service.auditProposal(p,id)});return;}
+            if(action==='graph'){const q=new URL(req.url!,'http://localhost').searchParams;send(res,200,agents.graph.walletPage(service.graph(p,id),Number(q.get('after')??0),Number(q.get('limit')??200)));return;}
+            if(action==='evidence'){send(res,200,service.evidence(p,id));return;}
+          }
+          if(req.method==='POST'){
+            if(action==='confirm'||action==='override'){send(res,200,service.confirmProposal(p,id,await body(req),action==='override'));return;}
+            if(action==='consume'){send(res,200,await service.consumeProposal(p,id,await body(req)));return;}
+            if(action==='broadcast'){send(res,200,await service.report(p,id,await body(req)));return;}
+            if(action==='cancel'){z.strictObject({}).parse(await body(req));send(res,200,service.cancelProposal(p,id));return;}
+          }
+        }
+        const watch=path.match(/^\/api\/defense\/proposals\/([\w-]+)\/receipt\/(recheck|watch|finality)(?:\/(stop|resume))?$/);
+        if(watch){const [,id,kind,action]=watch;
+          if(req.method==='GET'&&kind==='watch'&&!action){send(res,200,service.watch(p,id,'get'));return;}
+          if(req.method==='POST'){z.strictObject({}).parse(await body(req));send(res,200,kind==='finality'?await wallet.observeFinality(service.graph(p,id)):kind==='recheck'?await service.recheck(p,id):service.watch(p,id,action==='stop'?'stop':action==='resume'?'resume':'start'));return;}
+        }
+        if(path==='/api/defense/evidence/replay'&&req.method==='POST'){requireRole(p,'OWNER','EXECUTOR');send(res,200,await wallet.replayEvidence(await body(req),false));return;}
+        throw new ApiError(404,'NOT_FOUND');
+      }
+      if(config.defense)throw new ApiError(403,'DEFENSE_API_REQUIRED');
       if(req.method==='GET'&&path==='/api/wallet/meta'){send(res,200,wallet.info());return;}
       if(req.method==='POST'&&path==='/api/wallet/sessions'){send(res,201,wallet.sessions.create(await body(req)));return;}
       const walletSessionRoute=path.match(/^\/api\/wallet\/sessions\/([\w-]+)$/);
@@ -92,6 +141,8 @@ export function start_server(config: ServerConfig, launchId = "foreground") {
       if(req.method==='GET'&&walletActionsRoute){send(res,200,wallet.actions(walletActionsRoute[1]));return;}
       const receiptRecheck=path.match(/^\/api\/wallet\/reviews\/([\w-]+)\/receipt\/recheck$/);
       if(req.method==='POST'&&receiptRecheck){z.strictObject({}).parse(await body(req));send(res,200,await wallet.recheckReceipt(receiptRecheck[1]));return;}
+      const finality=path.match(/^\/api\/wallet\/reviews\/([\w-]+)\/receipt\/finality$/);
+      if(req.method==='POST'&&finality){z.strictObject({}).parse(await body(req));send(res,200,await wallet.observeFinality(finality[1]));return;}
       const receiptWatch=path.match(/^\/api\/wallet\/reviews\/([\w-]+)\/receipt\/watch(?:\/(stop|resume))?$/);
       if(receiptWatch){
         if(req.method==='GET'&&!receiptWatch[2]){send(res,200,receiptWatches.get(receiptWatch[1]));return;}
@@ -350,6 +401,7 @@ export function start_server(config: ServerConfig, launchId = "foreground") {
     agents,
     wallet,
     receiptWatches,
+    defense,
     server,
     ready,
     close: async () => {

@@ -28,3 +28,9 @@ PI 默认 requestTimeoutMs=90000、firstEventTimeoutMs=60000、streamIdleTimeout
 
 
 BOT Chain 测试网可用独立本地配置覆盖主网示例：`npm run wallet:configure-network -- .local/botchain-testnet/local-one.json bot-testnet`。它写入 chainId `0x3c8`、`https://rpc.bohr.life` 对应的环境变量名和低额上限；测试网 tBOT 从官方 Faucet 领取，私钥继续留在浏览器钱包。
+
+## Agent 防御服务模式
+
+配置 `defense.principals` 后只开放经过 OWNER／AGENT／EXECUTOR 身份检查的 `/api/defense` 路由，旧 API 整体拒绝访问。OWNER 的 `accounts` 是管理员配置的可授权账户；Agent 和执行适配器不得获得 OWNER token。缺少或重复 token 失败关闭，token 从环境读取且不可写入前端资产。完整示例和身份边界见 [30](../docs/30-Agent防御层API.md)。
+
+配置内 EVM 网络可以显式设置 `receiptEnabled:true`、`nativeSymbol` 和 `requiredConfirmations`。非 BOT 网络输出 wallet-observation-v3；BOT v1/v2 保持兼容。确认数检查是独立 RPC 观察，不代表已验证共识最终性。合约操作仍仅限已配置固定代码哈希的 transfer／approve，旧实验入口上文的描述为历史阶段范围。

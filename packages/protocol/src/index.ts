@@ -374,3 +374,4 @@ export const AgentGraphRecordingSchema=z.strictObject({
 export type AgentGraphRecording=z.infer<typeof AgentGraphRecordingSchema>;
 
 export * from "./wallet.js";
+export * from "./defense.js";

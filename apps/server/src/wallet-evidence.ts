@@ -36,9 +36,9 @@ export class WalletEvidenceStore {
       const receipt=await checkedReceipt(ask,transaction,before);
       const after=await observedState(ask,p.preparedTransaction,receipt.blockNumber,receipt.blockHash);
       const postState=stateDelta(before,after,receipt.status==='0x1'?'SUCCESS':'FAIL');
-      const tokens=p.version==='wallet-observation-v2'&&network?await tokenPostState(ask,p.preparedTransaction,p.intent,network,before,receipt):undefined;
-      if(p.version==='wallet-observation-v2'&&!tokens)throw new WalletObservationFailure('TOKEN_NETWORK_NOT_CONFIGURED');
-      const tokenActual=tokens?{tokenPostState:tokens}:{},tokenRecorded=p.version==='wallet-observation-v2'?{tokenPostState:p.tokenPostState}:{};
+      const tokens=p.intent.operation==='contract_call'&&network?await tokenPostState(ask,p.preparedTransaction,p.intent,network,before,receipt):undefined;
+      if(p.intent.operation==='contract_call'&&!tokens)throw new WalletObservationFailure('TOKEN_NETWORK_NOT_CONFIGURED');
+      const tokenActual=tokens?{tokenPostState:tokens}:{},tokenRecorded=p.version!=='wallet-observation-v1'&&p.tokenPostState?{tokenPostState:p.tokenPostState}:{};
       const same=canonical_json({transaction,before,receipt,after,postState,...tokenActual})===canonical_json({transaction:p.transaction,before:p.before,receipt:p.receipt,after:p.after,postState:p.postState,...tokenRecorded});
       result={...base,status:same?'MATCH':'MISMATCH',reason:same?'RPC_OBSERVATIONS_RECOMPUTED':'OBSERVATION_MISMATCH',postState,...tokenActual};
     }catch(e){result={...base,status:e instanceof WalletObservationFailure&&e.mismatch?'MISMATCH':'UNKNOWN',reason:e instanceof WalletObservationFailure?e.reason:'RPC_REPLAY_UNAVAILABLE'};}

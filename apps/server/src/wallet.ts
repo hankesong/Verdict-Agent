@@ -4,7 +4,7 @@ import { digest } from '@verdict/core';
 import { fetch_json, TransportError } from '@verdict/observations';
 import {
   CreateWalletReviewSchema, ConsumeWalletReviewSchema, BroadcastWalletReviewSchema, WalletReviewSchema, WalletQuantitySchema,
-  WalletStateObservationSchema, ReplayWalletEvidenceSchema, ConfirmWalletReviewSchema, OverrideWalletReviewSchema, WalletReviewActionsSchema, type WalletReview, type PreparedWalletTransaction, type AgentGraphEvent, type WalletReviewActions,
+  WalletStateObservationSchema, ReplayWalletEvidenceSchema, ConfirmWalletReviewSchema, OverrideWalletReviewSchema, WalletReviewActionsSchema, WalletFinalityObservationSchema, type WalletReview, type PreparedWalletTransaction, type AgentGraphEvent, type WalletReviewActions,
 } from '@verdict/protocol';
 import type { ServerConfig } from './config.js';
 import { Store, ApiError } from './store.js';
@@ -25,12 +25,14 @@ const hexData = z.string().regex(/^0x(?:[0-9a-f]{2})*$/);
 const blockSchema = z.object({number:WalletQuantitySchema, hash, baseFeePerGas:WalletQuantitySchema});
 const noArgs = z.strictObject({});
 type Network = NonNullable<ServerConfig['wallet']>['networks'][number];
+type DefenseBoundary={assert:(r:WalletReview)=>void;consume:(r:WalletReview)=>void};
 // No method in this class signs or broadcasts. Only a cooperating wallet adapter can consume a permit.
 export class WalletReviews {
   private jobs = new Map<string, {controller:AbortController; done:Promise<void>}>();
   private consuming = new Set<string>();
   private shuttingDown = false;
   private reports=new Map<string,{txHash:string;controller:AbortController;done:Promise<WalletReview>}>();
+  private defenseBoundary?:DefenseBoundary;
   readonly evidence:WalletEvidenceStore;
   readonly sessions:WalletSessions;
   constructor(private store: Store, private config: ServerConfig, private graph: GraphStore, private observe:ObservationSink=()=>{}) {
@@ -51,6 +53,7 @@ export class WalletReviews {
       }
     }
   }
+  setDefenseBoundary(boundary:DefenseBoundary){this.defenseBoundary=boundary;}
   private graphEvent(r:WalletReview,eventType:NonNullable<AgentGraphEvent['eventType']>,stage:NonNullable<AgentGraphEvent['stage']>,status:AgentGraphEvent['status'],detail:Parameters<GraphStore['appendWallet']>[4]={}) {
     // Only server enums and digests enter the public projection, never raw model/RPC text.
     const ev=this.graph.appendWallet(r.reviewId,eventType,stage,status,{
@@ -72,7 +75,7 @@ export class WalletReviews {
   info() {
     const configured=!!this.config.wallet?.networks.some(n=>!!process.env[n.rpcUrlEnv]) && !!this.config.guard && !!process.env[this.config.guard.apiKeyEnv];
     return {configured, reason:configured?'READY':'WALLET_RPC_OR_REVIEWER_NOT_CONFIGURED', reviewSchemaVersion:'wallet-review-v2', confirmationRequired:true, supportedOperations:this.config.wallet?.contractCalls.enabled?['native_transfer','contract_call']:['native_transfer'],
-      networks:(this.config.wallet?.networks??[]).map(({rpcUrlEnv,tokens: _tokens,...n})=>({...n, ready:!!process.env[rpcUrlEnv]}))};
+      networks:(this.config.wallet?.networks??[]).map(({rpcUrlEnv,tokens: _tokens,receiptEnabled:_receiptEnabled,requiredConfirmations:_requiredConfirmations,...n})=>({...n, ready:!!process.env[rpcUrlEnv]}))};
   }
   get(id:string):WalletReview {
     const row=this.store.db.prepare('SELECT body FROM wallet_reviews WHERE id=?').get(id) as {body:string}|undefined;
@@ -113,7 +116,7 @@ export class WalletReviews {
     try{
       const n=this.policy(r);
       if(r.intent.operation==='contract_call'&&contractPolicy(r,n).codeHash!==r.checks.find(c=>c.id==='preflight')?.facts.codeHash)return finish('UNAVAILABLE','TOKEN_POLICY_CHANGED');
-    }catch(e){if(e instanceof CheckFailure)return finish('UNAVAILABLE',e.reason);throw e;}
+    }catch(e){if(e instanceof CheckFailure)return finish('UNAVAILABLE',e.reason);if(e instanceof ApiError)return finish('UNAVAILABLE',e.message);throw e;}
     if(this.consuming.has(id))return finish('UNAVAILABLE','WALLET_CONSUME_IN_PROGRESS');
     if(!r.userConfirmedAt){
       if(r.userOverride)return finish('UNAVAILABLE','WALLET_CONFIRMATION_REQUIRED');
@@ -187,6 +190,7 @@ export class WalletReviews {
     const input=ConfirmWalletReviewSchema.parse(raw);
     return this.store.transaction(()=>{
       const r=this.get(id);this.sessions.assertReview(r);
+      this.defenseBoundary?.assert(r);
       if(r.status!=='ALLOWED'||!r.expiresAt||Date.now()>=r.expiresAt)throw new ApiError(409,'WALLET_PERMIT_UNAVAILABLE');
       if(input.transactionDigest!==r.transactionDigest||input.account!==r.transaction.from||input.chainId!==r.transaction.chainId||
         input.confirmationNonce!==r.confirmationNonce||input.walletSessionId!==r.walletSessionId||input.walletSessionRevision!==r.walletSessionRevision)throw new ApiError(409,'WALLET_CONFIRMATION_MISMATCH');
@@ -200,6 +204,7 @@ export class WalletReviews {
     const input=OverrideWalletReviewSchema.parse(raw);
     return this.store.transaction(()=>{
       const r=this.get(id);this.sessions.assertReview(r);
+      this.defenseBoundary?.assert(r);
       if(!this.canOverride(r)||!r.transactionDigest||!r.preparedTransaction||!r.expiresAt||Date.now()>=r.expiresAt)throw new ApiError(409,'WALLET_RISK_OVERRIDE_UNAVAILABLE');
       if(input.transactionDigest!==r.transactionDigest||input.account!==r.transaction.from||input.chainId!==r.transaction.chainId||
         input.confirmationNonce!==r.confirmationNonce||input.walletSessionId!==r.walletSessionId||input.walletSessionRevision!==r.walletSessionRevision)throw new ApiError(409,'WALLET_CONFIRMATION_MISMATCH');
@@ -211,6 +216,7 @@ export class WalletReviews {
     });
   }
   private policy(r:WalletReview):Network {
+    this.defenseBoundary?.assert(r);
     const t=r.transaction,i=r.intent,n=this.config.wallet?.networks.find(n=>n.chainId===t.chainId);
     if(t.chainId!==i.chainId||!n)throw new CheckFailure('CHAIN_OUT_OF_SCOPE');
     if(t.from!==i.account)throw new CheckFailure('ACCOUNT_CHANGED');
@@ -341,6 +347,7 @@ export class WalletReviews {
     if(this.consuming.has(id))throw new ApiError(409,'WALLET_CONSUME_IN_PROGRESS');
     const assertPermit=()=>{const current=this.get(id);
       this.sessions.assertReview(current);
+      this.defenseBoundary?.assert(current);
       const continued=this.canOverride(current)&&current.userOverride!==undefined;
       if((current.status!=='ALLOWED'&&!continued)||!current.expiresAt||Date.now()>=current.expiresAt)throw new ApiError(409,'WALLET_PERMIT_UNAVAILABLE');
       if(digest(transaction)!==current.transactionDigest)throw new ApiError(409,'WALLET_TRANSACTION_CHANGED');
@@ -371,6 +378,7 @@ export class WalletReviews {
         if(rechecked.hash!==latest.hash)throw new CheckFailure('BLOCK_CHANGED',true);
       }
       this.store.transaction(()=>{const current=assertPermit();current.status='CONSUMED';current.reason='PERMIT_CONSUMED_ONCE';this.event(current,'STATE',current.reason);
+        this.defenseBoundary?.consume(current);
         this.graphEvent(current,'wallet.permit.consumed','PERMIT','CONSUMED',{source:'DETERMINISTIC',argumentsDigest:digest(transaction),resultDigest:digest({reviewId:id,transactionDigest:r.transactionDigest})});});
       return {reviewId:id,transactionDigest:r.transactionDigest,transaction};
     } catch(e) {
@@ -383,9 +391,9 @@ export class WalletReviews {
     return WalletStateObservationSchema.parse({blockNumber:f?.blockNumber,blockHash:f?.blockHash,senderBalance:f?.balanceWei,recipientBalance:f?.recipientBalanceWei,senderNonce:f?.nonce});
   }
   private networkForReceipt(r:WalletReview){
-    if(r.transaction.chainId!==botChainId)throw new ApiError(400,'RECEIPT_NETWORK_NOT_ENABLED');
-    const n=this.config.wallet?.networks.find(n=>n.chainId===botChainId);
-    if(!n)throw new ApiError(503,'BOT_TESTNET_NOT_CONFIGURED');return n;
+    const n=this.config.wallet?.networks.find(n=>n.chainId===r.transaction.chainId);
+    if(!n)throw new ApiError(503,'RECEIPT_NETWORK_NOT_CONFIGURED');
+    if(!(n.receiptEnabled??n.chainId===botChainId)||(!n.nativeSymbol&&n.chainId!==botChainId))throw new ApiError(400,'RECEIPT_NETWORK_NOT_ENABLED');return n;
   }
   receiptTrackingReview(id:string){
     const r=this.get(id);
@@ -445,7 +453,9 @@ export class WalletReviews {
       const tokenState=r.intent.operation==='contract_call'?await tokenPostState(ask,r.preparedTransaction!,r.intent,network,before,receipt):undefined;
       r.postState=postState;r.tokenPostState=tokenState;r.receiptReport.postStateStatus='POST_STATE_RECHECKED';
       // Private content-addressed packet, in a namespace distinct from Ethereum/A evidence.
-      const evidenceRef=this.evidence.save(r.intent.operation==='contract_call'
+      const evidenceRef=this.evidence.save(network.chainId!==botChainId
+        ? {version:'wallet-observation-v3',chainId:network.chainId,nativeSymbol:network.nativeSymbol!,walletReviewId:r.reviewId,traceId:r.traceId??r.reviewId,observationSource:this.config.wallet!.observationSource,capturedAt:new Date().toISOString(),intent:r.intent,preparedTransaction:r.preparedTransaction,before,transaction,receipt,after,postState,...(tokenState?{tokenPostState:tokenState}:{}),authority:'RPC_OBSERVATION_ONLY'}
+        : r.intent.operation==='contract_call'
         ? {version:'wallet-observation-v2',chainId:botChainId,nativeSymbol:'tBOT',walletReviewId:r.reviewId,traceId:r.traceId??r.reviewId,observationSource:this.config.wallet!.observationSource,capturedAt:new Date().toISOString(),intent:r.intent,preparedTransaction:r.preparedTransaction,before,transaction,receipt,after,postState,tokenPostState:tokenState,authority:'RPC_OBSERVATION_ONLY'}
         : {version:'wallet-observation-v1',chainId:botChainId,nativeSymbol:'tBOT',walletReviewId:r.reviewId,traceId:r.traceId??r.reviewId,observationSource:this.config.wallet!.observationSource,capturedAt:new Date().toISOString(),intent:r.intent,preparedTransaction:r.preparedTransaction,before,transaction,receipt,after,postState,authority:'RPC_OBSERVATION_ONLY'});
       this.store.transaction(()=>{
@@ -470,24 +480,45 @@ export class WalletReviews {
       return this.get(r.reviewId);
     }finally{clearTimeout(timer);}
   }
-  async replayEvidence(raw:unknown){
+  async replayEvidence(raw:unknown,recordGraph=true){
     const {packet}=ReplayWalletEvidenceSchema.parse(raw);
-    const n=this.config.wallet?.networks.find(n=>n.chainId===botChainId);
-    if(!n)throw new ApiError(503,'BOT_TESTNET_NOT_CONFIGURED');
+    const n=this.config.wallet?.networks.find(n=>n.chainId===packet.body.chainId);
+    if(!n)throw new ApiError(503,'RECEIPT_NETWORK_NOT_CONFIGURED');
+    if(!(n.receiptEnabled??n.chainId===botChainId))throw new ApiError(400,'RECEIPT_NETWORK_NOT_ENABLED');
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),this.config.wallet!.rpcTimeoutMs*4);
     try{const result=await this.evidence.replay(packet,(m,p)=>this.rpc(n,m,p,controller.signal),this.config.wallet!.observationSource,()=>{
       const t=packet.body.preparedTransaction,i=packet.body.intent;
+      if(packet.body.chainId!==t.chainId||packet.body.chainId!==i.chainId||(packet.body.version==='wallet-observation-v3'&&packet.body.nativeSymbol!==n.nativeSymbol))throw new WalletObservationFailure('LOCAL_POLICY_MISMATCH',true);
       if(i.operation==='native_transfer'){
-        if(t.chainId!==botChainId||i.chainId!==botChainId||t.data!=='0x'||t.from!==i.account||t.to!==i.recipient||BigInt(t.value)>BigInt(i.maxValueWei)||BigInt(t.value)>BigInt(n.maxValueWei)||BigInt(t.gas)!==21000n||BigInt(t.gas)*BigInt(t.maxFeePerGas)>BigInt(i.maxTotalFeeWei)||BigInt(i.maxTotalFeeWei)>BigInt(n.maxTotalFeeWei))throw new WalletObservationFailure('LOCAL_POLICY_MISMATCH',true);
+        if(t.chainId!==n.chainId||i.chainId!==n.chainId||t.data!=='0x'||t.from!==i.account||t.to!==i.recipient||BigInt(t.value)>BigInt(i.maxValueWei)||BigInt(t.value)>BigInt(n.maxValueWei)||BigInt(t.gas)!==21000n||BigInt(t.gas)*BigInt(t.maxFeePerGas)>BigInt(i.maxTotalFeeWei)||BigInt(i.maxTotalFeeWei)>BigInt(n.maxTotalFeeWei))throw new WalletObservationFailure('LOCAL_POLICY_MISMATCH',true);
       } else {
-        if(!this.config.wallet?.contractCalls.enabled||t.chainId!==botChainId||i.chainId!==botChainId||t.from!==i.account||t.to!==i.recipient||BigInt(t.value)!==0n||BigInt(t.gas)*BigInt(t.maxFeePerGas)>BigInt(i.maxTotalFeeWei)||BigInt(i.maxTotalFeeWei)>BigInt(n.maxTotalFeeWei)||!this.config.wallet.contractCalls.allowedSelectors.includes(i.functionSelector as '0xa9059cbb'|'0x095ea7b3'))throw new WalletObservationFailure('LOCAL_POLICY_MISMATCH',true);
+        if(!this.config.wallet?.contractCalls.enabled||t.chainId!==n.chainId||i.chainId!==n.chainId||t.from!==i.account||t.to!==i.recipient||BigInt(t.value)!==0n||BigInt(t.gas)*BigInt(t.maxFeePerGas)>BigInt(i.maxTotalFeeWei)||BigInt(i.maxTotalFeeWei)>BigInt(n.maxTotalFeeWei)||!this.config.wallet.contractCalls.allowedSelectors.includes(i.functionSelector as '0xa9059cbb'|'0x095ea7b3'))throw new WalletObservationFailure('LOCAL_POLICY_MISMATCH',true);
         try{contractPolicy({transaction:t,intent:i},n);}catch{throw new WalletObservationFailure('LOCAL_TOKEN_POLICY_MISMATCH',true);}
       }
     },n);
       const row=this.store.db.prepare('SELECT body FROM wallet_reviews WHERE id=?').get(packet.body.walletReviewId) as {body:string}|undefined;
-      if(row){const local=WalletReviewSchema.parse(JSON.parse(row.body));if(local.evidenceRef===packet.evidenceRef)this.graphEvent(local,'wallet.evidence.replayed','EVIDENCE_REPLAY',result.status==='MATCH'?'OBSERVED':result.status==='MISMATCH'?'BLOCK':'UNVERIFIABLE',{source:'DETERMINISTIC',reasonCode:result.reason,evidenceRef:packet.evidenceRef,resultDigest:digest(result)});}
+      if(row&&recordGraph){const local=WalletReviewSchema.parse(JSON.parse(row.body));if(local.evidenceRef===packet.evidenceRef)this.graphEvent(local,'wallet.evidence.replayed','EVIDENCE_REPLAY',result.status==='MATCH'?'OBSERVED':result.status==='MISMATCH'?'BLOCK':'UNVERIFIABLE',{source:'DETERMINISTIC',reasonCode:result.reason,evidenceRef:packet.evidenceRef,resultDigest:digest(result)});}
       return result;
     }finally{clearTimeout(timer);}
+  }
+  async observeFinality(id:string){
+    const r=this.get(id),n=this.networkForReceipt(r),reported=r.receiptReport;
+    if(!reported?.blockHash||!reported.blockNumber||!r.preparedTransaction)throw new ApiError(409,'NO_OBSERVED_RECEIPT');
+    const base={schemaVersion:'wallet-finality-v1' as const,reviewId:id,txHash:reported.txHash,checkedAt:Date.now(),requiredConfirmations:n.requiredConfirmations,authority:'RPC_OBSERVATION_ONLY' as const};
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),this.config.wallet!.rpcTimeoutMs*4);
+    try{
+      const ask=(m:string,p:unknown[])=>this.rpc(n,m,p,controller.signal);
+      const tx=await checkedTransaction(ask,r.preparedTransaction,reported.txHash);
+      if(tx.blockHash!==reported.blockHash||tx.blockNumber!==reported.blockNumber)throw new WalletObservationFailure('OBSERVED_TRANSACTION_MOVED',true);
+      const receipt=await checkedReceipt(ask,tx,this.beforeState(r));
+      if((receipt.status==='0x1'?'SUCCESS':'FAIL')!==reported.receiptStatus||receipt.gasUsed!==reported.gasUsed)throw new WalletObservationFailure('RECEIPT_OBSERVATION_CHANGED');
+      const head=blockSchema.parse(await ask('eth_getBlockByNumber',['latest',false]));
+      await assertBlock(ask,reported.blockNumber,reported.blockHash);
+      const count=BigInt(head.number)-BigInt(reported.blockNumber)+1n;
+      if(count<1n)return WalletFinalityObservationSchema.parse({...base,status:'UNKNOWN',confirmations:null,reason:'RPC_HEAD_BEHIND_RECEIPT'});
+      return WalletFinalityObservationSchema.parse({...base,status:count>=BigInt(n.requiredConfirmations)?'CONFIRMATIONS_MET':'PENDING',confirmations:count.toString(),reason:'CANONICAL_BLOCK_RECHECKED'});
+    }catch(e){return WalletFinalityObservationSchema.parse({...base,status:e instanceof WalletObservationFailure&&['BLOCK_CHANGED','OBSERVED_TRANSACTION_MOVED'].includes(e.reason)?'REORG_DETECTED':'UNKNOWN',confirmations:null,reason:e instanceof WalletObservationFailure?e.reason:'RPC_FINALITY_UNAVAILABLE'});}
+    finally{clearTimeout(timer);}
   }
   async close(){this.shuttingDown=true;for(const job of this.jobs.values())job.controller.abort();for(const job of this.reports.values())job.controller.abort();await Promise.allSettled([...this.jobs.values(),...this.reports.values()].map(j=>j.done));}
 }
