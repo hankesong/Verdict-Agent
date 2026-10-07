@@ -36,6 +36,7 @@ import {
 } from "./view";
 import "./style.css";
 import "./product.css";
+import "./settings/settings.css";
 import { productShell } from "./shell";
 import { experienceAvailable, experienceMode, experienceURL } from "./wallet/experience-mode";
 import { mountAgentUI } from "./agent-ui";
@@ -46,6 +47,7 @@ const $ = <T extends HTMLElement = HTMLElement>(selector: string) =>
   document.querySelector<T>(selector)!;
 let graphMounted=false;
 let walletMounted=false;
+let settingsMounted=false;
 let meta: Meta | null = null,
   candidates: Candidate[] = [],
   evidenceIndex: EvidenceIndex = [];
@@ -84,6 +86,7 @@ function persist() {
 $("#app").innerHTML = productShell(`<section id="view-task" class="view"><div class="task-layout"><section class="panel task-panel"><div class="panel-heading"><h2>验收条件</h2><span class="step">01 / REQUEST</span></div><form id="task-form"><fieldset id="task-fields" disabled><label>可信配置<select id="context" name="context" required></select></label><label>账户地址<input id="account" name="account" spellcheck="false" required pattern="0x[0-9a-f]{40}" placeholder="0x…"></label><label>目标区块哈希<input id="block" name="block" class="mono" spellcheck="false" required pattern="0x[0-9a-f]{64}" placeholder="0x…"></label><p class="hint">使用后端配置的检查点。输入其他区块不会自动改变信任基准。</p><label>调用方案<select id="scenario"><option value="fallback">自动替换 · 三个演示服务</option><option value="success">仅正常服务</option><option value="all-fail">全部失败 · 两个故障服务</option><option value="custom">自选候选</option></select></label><div id="candidate-options" hidden></div><div class="field-label">验收字段</div><div class="field-options">${["balance", "nonce", "codeHash", "storageRoot"].map((f) => `<label><input type="checkbox" name="field" value="${f}" checked>${f}</label>`).join("")}</div><label class="toggle"><input id="history" type="checkbox"><span>使用适用的历史反证<small>影响顺序，每次新交付仍需核验</small></span></label><details class="budget"><summary>次数、时间与成本预算</summary><div class="budget-grid"><label>最多尝试<input id="max-attempts" type="number" min="1" max="100" value="3" required></label><label>超时（毫秒）<input id="timeout" type="number" min="1" max="600000" value="15000" required></label><label class="wide">最高成本（wei）<input id="cost" inputmode="numeric" pattern="(0|[1-9][0-9]*)" value="0" required></label></div></details><button class="primary-button" id="submit" type="submit">开始验收 <span>→</span></button><button class="text-button" id="preview-selection" type="button">查看候选顺序</button></fieldset></form><button id="retry-submit" class="primary-button" hidden>重试同一请求</button><p class="footnote">来源：冻结证明 / 故障注入</p><div id="selection-preview"></div></section><section class="panel audit-panel"><div class="panel-heading"><h2>交付与验收</h2><span class="step">02 / AUDIT</span></div><div id="audit" aria-live="polite">${empty("等待第一笔任务", "设置账户与区块后开始验收。调用、拒收、替换与采用，都将在这里留下记录。")}<div class="flow"><span>获取交付</span><i>→</i><span>核验依据</span><i>→</i><span>采用或停止</span></div></div></section></div></section>
 <section id="view-services" class="view" hidden><div class="section-toolbar"><p>声明能力与实测结果分开展示。RPC 仅作观测，不冒充签名服务。</p><button id="observe" class="secondary-button">采集实时 RPC 观测 ↗</button></div><div id="services-list" class="services-grid"></div></section>
 <section id="view-evidence" class="view" hidden><div class="evidence-layout"><section class="panel evidence-list-panel"><div class="panel-heading"><h2>证据记录</h2><button id="refresh-evidence" class="text-button">刷新</button></div><div id="evidence-list"></div></section><section class="panel evidence-detail-panel"><div class="panel-heading"><h2>独立复验</h2><span class="step">03 / REPLAY</span></div><div id="evidence-detail">${empty("选择一份证据", "下载原始材料，或让第二实例重新计算签名、账户证明与请求条件。")}</div></section></div></section>
+<section id="view-settings" class="view" hidden><div id="model-settings-root"></div></section>
 <section id="view-wallet" class="view" hidden><div id="wallet-root"></div></section>
 <section id="view-activity" class="view" hidden><div id="agent-graph-root"></div></section><section id="view-monitor" class="view" hidden><div class="evidence-layout"><section class="panel evidence-list-panel"><div class="panel-heading"><h2>受监任务</h2><button id="refresh-monitor" class="text-button">刷新</button></div><div id="monitor-list"></div></section><section class="panel evidence-detail-panel"><div class="panel-heading"><h2>审计时间线 · 决定与许可</h2><span class="step">04 / MONITOR</span></div><div id="monitor-detail">${empty("选择一个任务", "查看锁定边界、逐条活动的外审决定、一次性许可消费与交付验收结果。")}</div></section></div></section>
 <section id="view-threats" class="view" hidden><div class="evidence-layout"><section class="panel evidence-list-panel"><div class="panel-heading"><h2>公共索引 · 签名安全报告</h2><button id="refresh-threats" class="text-button">刷新</button></div><div id="threats-list"></div><div class="import-box"><textarea id="threat-import" aria-label="签名安全报告" placeholder="粘贴另一实例导出的签名安全报告 JSON"></textarea><button id="threat-import-submit" class="secondary-button">导入并独立复验</button><pre id="threat-import-result"></pre></div></section><section class="panel evidence-detail-panel"><div class="panel-heading"><h2>报告详情 · 复验与规则候选</h2><span class="step">04 / LEDGER</span></div><div id="threat-detail">${empty("选择一份报告", "导入或点击左侧报告查看化名化内容、独立复验结果与规则候选。")}</div></section></div></section>
@@ -103,7 +106,7 @@ function errorMessage(error: unknown) {
 function showView(name: string) {
   let route=name;name=name.split("?")[0];
   if(experienceMode&&name!=='wallet'){name='wallet';route='wallet';}
-  if (!["task", "services", "evidence", "activity", "wallet", "monitor", "threats"].includes(name)) {name="wallet";route="wallet";}
+  if (!["task", "services", "evidence", "activity", "wallet", "monitor", "threats", "settings"].includes(name)) {name="wallet";route="wallet";}
   for (const item of document.querySelectorAll<HTMLElement>("[data-view]")) {
     const active = item.dataset.view === name;
     item.classList.toggle("active", active);
@@ -115,6 +118,7 @@ function showView(name: string) {
     monitor: ["外审监控台", "每一次放行与拦截，都有耗时和原因。"],
     threats: ["威胁账本", "报告可复验，规则可追溯。"],
     wallet:["付款工作台","付款工作台"],
+    settings:["模型设置","模型设置"],
     activity:["Agent 活动","行动有迹，判断有据。"],
     task: ["任务验收", "先验收，再采用。"],
     services: ["服务目录", "每个选择，都有依据。"],
@@ -122,6 +126,7 @@ function showView(name: string) {
   };
   $("#page-name").textContent = names[name][0];
   $("#heading").textContent = names[name][1];
+  $("#wallet-open").hidden = name === 'settings';
   $("#intro").textContent =
     name === "monitor" ? "外审在动作执行前检查行为边界；硬规则拦截与模型拦截分别显示。" :
     name === "threats" ? "导入实例独立复验后才可生成规则候选；ERC-8004 链上广播未接入。" :
@@ -132,9 +137,10 @@ function showView(name: string) {
         ? "查看服务能力、采样范围和实际观测，不用一个总分掩盖差异。"
         : "由独立实例和可信配置重新计算；复验完成不等于数据通过。";
   if(location.hash.slice(1)!==route)location.hash=route;
-  document.querySelector('.page-heading')?.toggleAttribute('hidden',name==='activity'||name==='wallet');
-  document.querySelector('.stats')?.toggleAttribute('hidden',name==='activity'||name==='wallet');
+  document.querySelector('.page-heading')?.toggleAttribute('hidden',name==='activity'||name==='wallet'||name==='settings');
+  document.querySelector('.stats')?.toggleAttribute('hidden',name==='activity'||name==='wallet'||name==='settings');
   document.querySelector('.environment')?.toggleAttribute('hidden',name==='wallet');
+  if(name==='settings'&&!settingsMounted){settingsMounted=true;void import('./settings/ui').then(m=>m.mountModelSettings($('#model-settings-root'))).catch(()=>{settingsMounted=false;$('#model-settings-root').textContent='模型设置加载失败，请刷新。';});}
   if(name==='wallet'&&!walletMounted){walletMounted=true;void import('./wallet/ui').then(m=>m.mountWalletUI($('#wallet-root'))).catch(()=>{walletMounted=false;$('#wallet-root').textContent='钱包界面加载失败，请刷新。';});}
   if(name==='activity'&&!graphMounted){graphMounted=true;void import('./graph/Activity').then(m=>m.mountActivityGraph($('#agent-graph-root'))).catch(()=>{graphMounted=false;$('#agent-graph-root').textContent='活动图加载失败，请刷新重试。';});}
   if(name==='evidence'){
@@ -507,6 +513,7 @@ $("#scenario").addEventListener("change", () => {
   $("#candidate-options").hidden =
     $<HTMLSelectElement>("#scenario").value !== "custom";
 });
+window.addEventListener("verdict:models-updated", () => { if(!busy)void connect(); });
 $("#reconnect").addEventListener("click", () => {
   if (!busy) void connect();
 });
@@ -575,6 +582,7 @@ else{
   $("#connection-status").textContent="模拟体验 · UI_MOCK";
   $("#reconnect").hidden=true;
   $(".workspace-tools").hidden=true;
+  $(".settings-entry").hidden=true;
 }
 if(experienceAvailable){
   const link=document.createElement("a");link.className="experience-switch";link.href=experienceURL(!experienceMode);link.textContent=experienceMode?"退出体验":"体验流程";
@@ -589,5 +597,6 @@ sidebarToggle.addEventListener("click", () => {
 });
 $("#new-transfer").addEventListener("click", () => {
   showView("wallet");
+  if(matchMedia("(max-width:680px)").matches){document.body.classList.remove("sidebar-collapsed");sidebarToggle.setAttribute("aria-expanded","false");}
   window.dispatchEvent(new Event("verdict:new-transfer"));
 });

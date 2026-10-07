@@ -46,3 +46,5 @@ staging 增加 `/override`（仅模型拒绝／不确定且确定性检查完成
 `wallet-receipt-watch.ts` 保存独立回执跟踪队列；`POST /api/wallet/reviews/:id/receipt/watch` 显式启动，GET 查询，`/stop` 与 `/resume` 控制后续查询。复用原 recheck，不增加交易副作用，旧 DTO 不变。限额、重启恢复和前端接线见 [29](../../docs/29-回执跟踪队列.md)。
 
 `payment-defense.ts` 提供防御层授权／任务／提议／一次性执行凭证；`defense-auth.ts` 分离 OWNER、AGENT、EXECUTOR。启用 `defense` 后旧钱包写接口关闭，执行适配器使用 `examples/consumer/src/defense.ts`；材料摘要、差异、预算和多链 finality 约束见 [30](../../docs/30-Agent防御层API.md)。
+
+本地模型设置：`GET /api/settings/models`、`POST /api/settings/models/agent` 和 `/guard`。共享 `model-settings-v1` DTO 只返回非敏感配置与密钥存在标记。设置保存在本实例 `dataDir/model-settings.json`（0600），重启载入并优先于启动文件中对应角色的模型配置。保存成功立即更新 PI 和钱包审查器，模型地址变化要求重新提交密钥；任务运行、有效待签名审查和过期 revision 阻止写入。设置接口不发出模型请求，保留本地 Host／Origin 限制，defense 模式不开放。见 [027](../../docs/decisions/027-local-model-settings.md)。

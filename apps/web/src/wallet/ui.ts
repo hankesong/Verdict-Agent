@@ -340,6 +340,7 @@ export function mountWalletUI(root:HTMLElement) {
   window.addEventListener('hashchange',()=>void route());
   const loadMeta=async()=>{try{meta=WalletMetaSchema.parse(await request(primary,'/api/wallet/meta'));updateSession();if(review)draw();}catch{meta=null;updateSession();}};
   document.querySelector('#reconnect')!.addEventListener('click',()=>void loadMeta());
+  window.addEventListener('verdict:models-updated',()=>void loadMeta());
   setInterval(updateSignature,500);saveHistory();updateSession();
   void loadMeta().then(async()=>{
     if(demo){

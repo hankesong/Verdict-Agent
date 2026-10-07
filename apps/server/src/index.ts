@@ -16,6 +16,7 @@ import { WalletReceiptWatches } from "./wallet-receipt-watch.js";
 import { PaymentDefense } from "./payment-defense.js";
 import { authenticateDefense,requireRole } from "./defense-auth.js";
 import { AgentService } from "./agent-service.js";
+import { ModelSettings } from "./model-settings.js";
 import { ApiError } from "./store.js";
 import { type ServerConfig } from "./config.js";
 import { call_tool, describe_environment, tool_catalog } from "./tools.js";
@@ -54,6 +55,9 @@ function send(res: ServerResponse, code: number, data: unknown) {
 }
 export function start_server(config: ServerConfig, launchId = "foreground") {
   const engine = new Engine(config);
+  let modelSettings: ModelSettings;
+  try { modelSettings = new ModelSettings([config, engine.config]); }
+  catch (error) { engine.store.close(); throw error; }
   const agents = new AgentService(engine);
   const wallet = new WalletReviews(engine.store, config, agents.graph, agents.observer.record);
   const receiptWatches = new WalletReceiptWatches(engine.store, config, wallet);
@@ -126,6 +130,12 @@ export function start_server(config: ServerConfig, launchId = "foreground") {
         throw new ApiError(404,'NOT_FOUND');
       }
       if(config.defense)throw new ApiError(403,'DEFENSE_API_REQUIRED');
+      if(req.method==='GET'&&path==='/api/settings/models'){send(res,200,modelSettings.read());return;}
+      const modelSettingsRoute=path.match(/^\/api\/settings\/models\/(agent|guard)$/);
+      if(req.method==='POST'&&modelSettingsRoute){
+        const input=await body(req);
+        send(res,200,modelSettings.update(modelSettingsRoute[1] as 'agent'|'guard',input,agents.modelSettingsBusy||wallet.modelSettingsBusy));return;
+      }
       if(req.method==='GET'&&path==='/api/wallet/meta'){send(res,200,wallet.info());return;}
       if(req.method==='POST'&&path==='/api/wallet/sessions'){send(res,201,wallet.sessions.create(await body(req)));return;}
       const walletSessionRoute=path.match(/^\/api\/wallet\/sessions\/([\w-]+)$/);
@@ -410,6 +420,7 @@ export function start_server(config: ServerConfig, launchId = "foreground") {
       await Promise.all([receiptWatches.close(),wallet.close()]);
       await agents.close();
       await engine.close();
+      modelSettings.close();
     },
   };
 }

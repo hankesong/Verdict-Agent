@@ -23,3 +23,7 @@
 `npx playwright test --config playwright.wallet.config.ts` 使用独立端口 3122 / 5183 和临时 SQLite，运行 20 条钱包付款路径。`start-wallet.mjs` 复用 STAGING 后端与既有 harness，仅在启动脚本内配置端口、CORS、RPC 和模型替身。默认 `playwright.config.ts` 排除此专项，避免混用实例。
 
 覆盖 v2 会话与逐次手写、confirm / consume 顺序、丢失响应恢复、拒签、会话变化、ERC-20 固定 ABI 预审、本机付款条件与异常／取消历史、逐事件路线运动和缺口恢复、UI_MOCK 数据隔离，以及 UNKNOWN 回执重试预算。原生币回执通过真实服务端路径，RPC／模型／钱包为 TEST_TRANSPORT；代币后验与 STAGING 新增授权、持久跟踪页面尚未接线，不从这些测试推断已完成。
+
+## 本地模型设置
+
+`model-settings.spec.ts` 属于默认 Playwright 配置，覆盖常驻入口、两类模型独立编辑、保存并刷新恢复、密钥不回传／不写浏览器存储、地址变更要求新密钥、手机导航、服务不支持时禁用保存和失败不显示成功。模型调用仍使用隔离测试实例；保存设置自身不调用 LLM。

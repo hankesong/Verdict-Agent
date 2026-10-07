@@ -251,7 +251,7 @@ export function mountAgentUI(
       error(message(err));
     }
   }
-  void (async () => {
+  const refreshConfiguration = async () => {
     try {
       const info = z
         .object({
@@ -266,6 +266,16 @@ export function mountAgentUI(
         ? `PI 1.0.4 · ${info.modelId} · ${info.modelSource}。直接接收任务并执行，缺少必要条件时会说明。`
         : "前方模型或独立外审未配置，受保护入口不可用。固定流程仍可使用（未启用外审）。";
       setWorking(false);
+    } catch (err) {
+      configured = false;
+      error(message(err));
+      $("#pi-configuration").textContent = "PI 接口不可用；请启动更新后的后端。";
+    }
+  };
+  window.addEventListener('verdict:models-updated', () => void refreshConfiguration());
+  void (async () => {
+    await refreshConfiguration();
+    try {
       let pi = false;
       try {
         pi =

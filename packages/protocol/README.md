@@ -17,3 +17,5 @@ MODEL_RESPONSE 是新增 Agent 事件类型，其数据使用 ModelRequestTiming
 材料审查增量新增 `MaterialAssessment`、`MaterialTriageRecord`、AgentSnapshot 可选 `materialHandling`、原因码 `MATERIAL_REQUIRED`。CreateAgentRun 的 `materialPolicy` 默认为 required，可由调用方明确设 optional；缺省与显式 required 使用同一请求摘要，并兼容旧幂等记录。旧快照无需补字段；旧严格客户端接收新字段／枚举需同步协议。分类为 READ_AS_DATA 不代表任何动作许可，A 格式与验收语义不变。见 [材料误拦修复](../../docs/25-Guard材料误拦修复与复测.md)。
 
 MaterialTriageRecord.promptVersion 兼容 `material-triage-v1` 和 `material-triage-v2`；新任务使用 v2，旧记录不自动重新审查。可选 dispositionVersion 标记 `material-disposition-v2`，缺省表示旧处置规则；新规则只增量允许明确 ALLOW、DATA/REFERENCE、REQUESTED、NONE 的一致提醒作为不可信数据读取，不改变执行授权。只接受已知版本。见 [v2 复验](../../docs/26-Guard材料审查v2复验.md)。
+
+`model-settings-v1` 为本地模型管理的增量协议，定义模型角色、可编辑参数、revision 更新请求与脱敏读取响应。apiKey 仅允许出现在写入请求，读取响应只含 hasApiKey；不改变现有证据、钱包确认或许可 schema。见 [027](../../docs/decisions/027-local-model-settings.md)。

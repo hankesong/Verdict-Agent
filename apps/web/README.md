@@ -48,3 +48,9 @@ npx tsx --test tests/integration/wallet.test.ts
 ```
 
 旧浏览器回归使用 3101 / 3102 / 5174；钱包专项使用 3122 / 5183，均使用隔离数据库。钱包后端真实运行，钱包、RPC 与模型为 TEST_TRANSPORT；浏览器测试不代表真实插件实签或公开网络交易完成。覆盖条件对照、手写声明、幂等恢复、失效、拒签、路线运动、模拟隔离、回执预算及移动端布局。结果见 [整合记录](../../docs/decisions/025-staging-frontend-integration.md)。
+
+## 模型设置
+
+侧栏「模型设置」或 `#settings` 可独立配置执行 Agent 与审查 Agent。API 地址、模型名称、兼容格式、API Key、请求超时和输出上限保存后立即供新任务使用，重启保留。密钥不回填、不写入浏览器存储；地址变化时重新输入密钥。当前正在执行或等待签名的任务会阻止配置切换。保存表示配置生效，不表示已调用模型验证连通。
+
+后端需要本轮 `/api/settings/models` 接口；旧服务不支持时明确禁用保存。该入口沿用本地单用户部署边界，defense 模式不开放。详情及测试见 [027](../../docs/decisions/027-local-model-settings.md)。

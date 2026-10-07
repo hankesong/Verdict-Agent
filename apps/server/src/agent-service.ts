@@ -86,6 +86,7 @@ export class AgentService {
     { controller: AbortController; promise: Promise<void> }
   >();
   private closing = false;
+  private modelReplays = 0;
   constructor(readonly engine: Engine) {
     this.observer=new Observability(engine.store,engine.config);
     this.store = new AgentStore(engine.store,event=>this.observer.agentEvent(event));
@@ -93,6 +94,7 @@ export class AgentService {
     this.guard = new Guard(engine.store,this.observer.record);
     this.reports = new GuardReports(engine.store,engine.config);
   }
+  get modelSettingsBusy() { return this.closing || this.jobs.size > 0 || this.modelReplays > 0; }
   info() {
     const c = this.engine.config.agent;
     return {
@@ -139,6 +141,8 @@ export class AgentService {
     return this.reports.export({version:'guard-incident-v1',reporterId:this.engine.config.guardReports?.reporterId??'unconfigured',incidentKey:salt,revision:1,status:'SUSPECTED',action:activity.action as 'start_task',boundary:redactScope(original),proposed:proposed.success?redactScope(proposed.data):null,decision,executed:false,materialDigests:activity.action==='external_material'?(activity.args as {materialDigests:string[]}).materialDigests:[],modelId:c.modelId,modelSource:c.source,at:iso(),redaction:'SCOPE_RELATIONS',sharedMaterials:share.publicMaterials,relatedEvidence},share.acknowledgePublic===true);
   }
   async replayIncident(id:string,raw:unknown={}) {
+    this.modelReplays++;
+    try {
     const input=z.strictObject({contextId:z.string().optional()}).parse(raw);
     const report=this.reports.get(id);
     const security=await this.reports.replay(id,this.guard);
@@ -150,6 +154,7 @@ export class AgentService {
       related.push({status:'RECOMPUTED',consistent:verified.consistent,result:verified.result});
     }
     return {security,relatedEvidence:related};
+    } finally { this.modelReplays--; }
   }
   private config(): AgentConfig {
     const c = this.engine.config.agent;

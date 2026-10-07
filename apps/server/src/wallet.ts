@@ -54,6 +54,13 @@ export class WalletReviews {
     }
   }
   setDefenseBoundary(boundary:DefenseBoundary){this.defenseBoundary=boundary;}
+  get modelSettingsBusy() {
+    if(this.shuttingDown||this.jobs.size||this.consuming.size)return true;
+    return !!this.store.db.prepare(`SELECT id FROM wallet_reviews WHERE
+      json_extract(body,'$.status') IN ('ALLOWED','BLOCKED','UNCERTAIN') AND
+      json_extract(body,'$.preparedTransaction') IS NOT NULL AND
+      json_extract(body,'$.expiresAt') > ? LIMIT 1`).get(Date.now());
+  }
   private graphEvent(r:WalletReview,eventType:NonNullable<AgentGraphEvent['eventType']>,stage:NonNullable<AgentGraphEvent['stage']>,status:AgentGraphEvent['status'],detail:Parameters<GraphStore['appendWallet']>[4]={}) {
     // Only server enums and digests enter the public projection, never raw model/RPC text.
     const ev=this.graph.appendWallet(r.reviewId,eventType,stage,status,{
