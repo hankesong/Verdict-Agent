@@ -1289,6 +1289,8 @@ dd {
   .sidebar nav {
     display: flex;
     gap: 7px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
   .nav-item {
     width: auto;
@@ -1532,63 +1534,63 @@ dd {
   margin-top: 9px;
 }
 
-/* Guard pages: give explanatory copy and report import controls room to breathe. */
-#view-monitor .evidence-list-panel > .hint,
-#view-threats .evidence-list-panel > .hint {
-  margin: 8px 18px 16px;
-  line-height: 1.75;
-  overflow-wrap: anywhere;
-}
-#view-monitor #monitor-list,
-#view-threats #threats-list {
-  padding: 0 18px;
-}
-#view-threats #threats-list > h3 {
-  margin: 16px 0 10px;
-  line-height: 1.5;
-}
-#view-threats #threats-list > .hint {
-  margin: 10px 0 16px;
-  line-height: 1.75;
-}
-#view-threats .import-box {
-  margin: 16px 18px 18px;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
-}
-#view-threats .import-box textarea {
-  display: block;
+/* ---- 威胁账本（FR-G04） ---- */
+.import-box textarea {
   width: 100%;
-  min-height: 132px;
-  padding: 11px 12px;
-  border: 1px solid #dce3d6;
-  border-radius: 6px;
-  background: #fbfcf8;
-  color: var(--ink);
-  font: 11px/1.65 "SFMono-Regular", Consolas, monospace;
-  resize: vertical;
+  min-height: 92px;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  margin-bottom: 8px;
 }
-#view-threats .import-box textarea:focus {
-  outline: 2px solid #cf9a70;
-  outline-offset: 1px;
-}
-#view-threats #threat-import-submit {
-  margin-top: 10px;
-}
-#view-threats #threat-import-result,
-#view-threats #threat-detail pre {
-  max-width: 100%;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  line-height: 1.65;
-}
-#view-monitor .evidence-list-panel .panel-heading,
-#view-threats .evidence-list-panel .panel-heading {
-  gap: 12px;
-}
-#view-monitor .evidence-list-panel .panel-heading h2,
-#view-threats .evidence-list-panel .panel-heading h2 {
+.threat-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, var(--muted));
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
   min-width: 0;
-  line-height: 1.5;
 }
+.threat-id {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.threat-meta {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+.threat-status {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ---- 外审监控台 / 审计时间线（FR-G07） ---- */
+.tl { display: flex; flex-direction: column; gap: 6px; }
+.tl-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #e2e5dc);
+  border-radius: 8px;
+  font-size: 12.5px;
+  min-width: 0;
+}
+.tl-row .tl-seq { color: var(--muted); text-align: right; }
+.tl-row .tl-main { min-width: 0; }
+.tl-row .tl-main small { display: block; color: var(--muted); word-break: break-all; }
+.tl-row .tl-mark { text-align: right; font-weight: 600; }
+.tl-row .tl-mark small { display: block; font-weight: 400; color: var(--muted); word-break: break-all; }
+.tl-row.hard { border-color: #d8a29a; background: #f8ece9; }
+.tl-row.model { border-color: #d8a29a; background: #fbf1ef; }
+.tl-row.warn { border-color: #e0d2a8; background: #faf4e4; }
+.tl-row.ok { border-color: var(--line, #e2e5dc); }
