@@ -45,4 +45,4 @@ setup.mjs 的可选首参数可指定 `.local` 内的隔离输出目录，默认
 
 BOT 钱包图：`wallet:configure-network` 仅更新显式指定的 `.local` 配置，设置 chainId `0x3c8`、币种 `tBOT` 和 RPC 环境变量名。用新目录、独立端口／dataDir 运行两实例，勿覆盖 Ethereum 实例。钱包图专项已经纳入 `test:graph`，本地 RPC／模型均标为 TEST_TRANSPORT，见 [配置及 API 示例](../../docs/24-钱包活动图与BOT测试网观察.md)。
 
-钱包后端专项：`npm run test:wallet`。本地 EVM 检查：先按 [钱包后端 v2](../../docs/27-钱包后端v2.md) 在 `.local/evm-tools` 安装固定 Anvil/solc，再运行 `npm run verify:wallet:evm`。脚本编译本仓库测试代币，独立启动 loopback Anvil，以真实 EVM 检查转账与授权模拟，模型使用 TEST_TRANSPORT；不签名、不广播、不连接公共 RPC。
+钱包后端专项：`npm run test:wallet`。本地 EVM 检查：先按 [钱包后端 v2](../../docs/27-钱包后端v2.md) 在 `.local/evm-tools` 安装固定 Anvil/solc，再运行 `npm run verify:wallet:evm`。脚本编译本仓库测试代币，独立启动 loopback Anvil，检查模拟不改链上状态，再由本地测试驱动发送两笔转账／授权交易，验证待出块、后台跟踪、真实回执和第二实例复验。后端不广播；测试驱动只向自己的本地节点写入，不连接公共 RPC，模型使用 TEST_TRANSPORT。见 [回执跟踪说明](../../docs/29-回执跟踪队列.md)。

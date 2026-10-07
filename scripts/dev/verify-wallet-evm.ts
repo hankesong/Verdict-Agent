@@ -6,7 +6,7 @@ import {createServer} from 'node:net';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {encodeAbiParameters,encodeFunctionData,erc20Abi,keccak256,toHex} from 'viem';
-import {WalletEvidenceReplaySchema,type CreateWalletReviewSchema} from '@verdict/protocol';
+import {WalletEvidenceReplaySchema,WalletReceiptWatchSchema,type CreateWalletReviewSchema} from '@verdict/protocol';
 import {z} from 'zod';
 import {walletHarness,body,account,recipient} from '../../tests/integration/wallet-graph-harness.js';
 
@@ -40,6 +40,7 @@ try{
   await rpc('evm_mine',[]);
   f=await walletHarness();
   f.h.config.wallet!.rpcTimeoutMs=3000;f.h.config.wallet!.reviewTimeoutMs=15000;f.h.config.wallet!.permitTtlMs=30000;
+  Object.assign(f.h.config.wallet!.receiptTracking,{pollIntervalMs:100,maxAttempts:8,maxDurationMs:10000});
   f.h.config.wallet!.networks[0].maxTotalFeeWei='10000000000000000';
   f.h.config.wallet!.contractCalls.enabled=true;
   f.h.config.wallet!.networks[0].tokens=[{address:token,codeHash:keccak256(runtime as `0x${string}`),maxTransferAmount:'1000',maxApprovalAmount:'1000',approvedSpenders:[spender]}];
@@ -66,9 +67,29 @@ try{
     const unchanged=await rpc('eth_call',[{to:token,data:probe},'latest']);
     assert.equal(BigInt(unchanged as string),approve?0n:1000n,'review and consume must not mutate EVM state');
     // Only this test driver sends to its own Anvil. The backend only consumes and observes.
+    await rpc('evm_setAutomine',[false]);
     const txHash=await rpc('eth_sendTransaction',[r.preparedTransaction]);
     assert.match(String(txHash),/^0x[0-9a-f]{64}$/);
-    const reported=await f.api(`/api/wallet/reviews/${r.reviewId}/broadcast`,{txHash});
+    const initialReport=await f.api(`/api/wallet/reviews/${r.reviewId}/broadcast`,{txHash});
+    assert.equal(initialReport.code,200);assert.equal(initialReport.data.receiptReport.receiptStatus,'UNKNOWN');
+    const watchPath=`/api/wallet/reviews/${r.reviewId}/receipt/watch`;
+    assert.equal((await f.api(watchPath,{})).code,202);
+    let observedPending=false;
+    for(let i=0;i<200;i++){
+      const w=WalletReceiptWatchSchema.parse((await f.api(watchPath)).data);
+      if(w.status==='WAITING'&&w.attempts>=1){observedPending=true;break;}
+      await new Promise(resolve=>setTimeout(resolve,10));
+    }
+    assert.ok(observedPending,'watch must observe pending EVM state before mining');
+    await rpc('evm_mine',[]);await rpc('evm_setAutomine',[true]);
+    let completed=false;
+    for(let i=0;i<200;i++){
+      const w=WalletReceiptWatchSchema.parse((await f.api(watchPath)).data);
+      if(w.status==='COMPLETED'){completed=true;break;}
+      await new Promise(resolve=>setTimeout(resolve,10));
+    }
+    assert.ok(completed,'watch must independently observe the mined transaction');
+    const reported=await f.api(`/api/wallet/reviews/${r.reviewId}`);
     assert.equal(reported.code,200,JSON.stringify(reported.data));
     assert.equal(reported.data.receiptReport.receiptStatus,'SUCCESS',JSON.stringify(reported.data.receiptReport));
     assert.equal(reported.data.tokenPostState?.receiptEvent,'MATCH',JSON.stringify(reported.data));
@@ -81,7 +102,7 @@ try{
     assert.equal(replay.reviewAndPermit,'NOT_REPLAYED');
     assert.equal((await verifier.api('/api/wallet/reviews/'+r.reviewId)).code,404,'replay must not import signing permission');
     results.push({operation:approve?'erc20_approve':'erc20_transfer',status:r.status,before:facts.before,simulatedAfter:facts.after,gas:r.preparedTransaction?.gas,
-      localTxHash:txHash,receipt:reported.data.receiptReport.receiptStatus,observedAfter:reported.data.tokenPostState.after.values,replay:replay.status});
+      localTxHash:txHash,receipt:reported.data.receiptReport.receiptStatus,observedAfter:reported.data.tokenPostState.after.values,replay:replay.status,watch:'PENDING_TO_COMPLETED'});
   }
   const balance=await rpc('eth_call',[{to:token,data:encodeFunctionData({abi:erc20Abi,functionName:'balanceOf',args:[account as `0x${string}`]})},'latest']);
   assert.equal(BigInt(balance as string),900n,'only the explicit local transfer changes the balance');

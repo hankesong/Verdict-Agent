@@ -174,6 +174,16 @@ export const WalletReviewPageSchema = z.strictObject({
 export type WalletReviewActions = z.infer<typeof WalletReviewActionsSchema>;
 export type WalletReviewSummary = z.infer<typeof WalletReviewSummarySchema>;
 export type WalletReviewPage = z.infer<typeof WalletReviewPageSchema>;
+// A separate DTO keeps existing review/history/action responses compatible with strict clients.
+export const WalletReceiptWatchSchema = z.strictObject({
+  schemaVersion:z.literal('wallet-receipt-watch-v1'), reviewId:WalletLinkIdSchema, txHash:WalletHashSchema,
+  status:z.enum(['QUEUED','RUNNING','WAITING','COMPLETED','REJECTED','EXHAUSTED','STOPPED']),
+  attempts:z.number().int().nonnegative(), maxAttempts:z.number().int().positive(),
+  createdAt:z.number().int().positive(), updatedAt:z.number().int().positive(), deadlineAt:z.number().int().positive(),
+  nextPollAt:z.number().int().positive().nullable(), lastPollAt:z.number().int().positive().nullable(),
+  finishedAt:z.number().int().positive().nullable(), reason:z.string().regex(/^[A-Z0-9_]{1,160}$/),
+});
+export type WalletReceiptWatch = z.infer<typeof WalletReceiptWatchSchema>;
 export type WalletTransaction = z.infer<typeof WalletTransactionSchema>;
 export type PreparedWalletTransaction = z.infer<typeof PreparedWalletTransactionSchema>;
 export type WalletIntent = z.infer<typeof WalletIntentSchema>;

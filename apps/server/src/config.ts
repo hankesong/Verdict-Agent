@@ -80,6 +80,14 @@ export const WalletConfigSchema = z.strictObject({
   reviewTimeoutMs: z.number().int().min(100).max(180000).default(90000),
   permitTtlMs: z.number().int().min(100).max(120000).default(60000),
   observationSource: z.enum(['LIVE','TEST_TRANSPORT']).default('LIVE'),
+  receiptTracking: z.strictObject({
+    enabled:z.boolean().default(true),
+    pollIntervalMs:z.number().int().min(100).max(60000).default(5000),
+    maxAttempts:z.number().int().min(1).max(100).default(12),
+    maxDurationMs:z.number().int().min(100).max(600000).default(180000),
+    maxPending:z.number().int().min(1).max(128).default(32),
+    concurrency:z.number().int().min(1).max(2).default(1),
+  }).prefault({}),
   contractCalls: z.strictObject({
     enabled: z.boolean().default(false),
     maxCalldataBytes: z.number().int().min(4).max(32770).default(4096),

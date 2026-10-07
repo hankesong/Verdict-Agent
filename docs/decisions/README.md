@@ -27,3 +27,6 @@
 | [019](019-wallet-backend-v2.md) | 钱包后端 v2 | 会话失效、原生币与受限 ERC-20 预审、逐次确认；前端重做及风险覆盖执行后置 |
 
 | [020](020-staging-risk-and-token-receipts.md) | staging 后端推进 | 保留 v2 分支，增加有界风险继续与 ERC-20 回执／观察包复验 |
+
+| [022](022-staging-backend-continuation.md) | staging 子分支接力 | 最近审查与可用操作接口，本地 EVM 回执／第二实例复验 |
+| [023](023-bounded-receipt-tracking.md) | 有界回执跟踪 | 显式队列、退避／限额、暂停恢复与重启持久化 |

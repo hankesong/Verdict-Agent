@@ -387,6 +387,14 @@ export class WalletReviews {
     const n=this.config.wallet?.networks.find(n=>n.chainId===botChainId);
     if(!n)throw new ApiError(503,'BOT_TESTNET_NOT_CONFIGURED');return n;
   }
+  receiptTrackingReview(id:string){
+    const r=this.get(id);
+    if(r.status!=='CONSUMED'||(r.reviewer.verdict!=='ALLOW'&&(!r.userOverride||r.userOverride.confirmationDigest!==this.overrideDigest(r)))||!r.preparedTransaction)throw new ApiError(409,'WALLET_PERMIT_NOT_CONSUMED');
+    this.networkForReceipt(r);
+    if(!r.receiptReport)throw new ApiError(409,'NO_BROADCAST_REPORT');
+    return r;
+  }
+  receiptReportAvailable(id:string){return this.reports.has(id)||this.reports.size<2;}
   broadcast(id:string,raw:unknown,recheck=false):Promise<WalletReview>{
     const txHash=BroadcastWalletReviewSchema.parse(raw).txHash.toLowerCase(),r=this.get(id);
     if(r.status!=='CONSUMED'||(r.reviewer.verdict!=='ALLOW'&&(!r.userOverride||r.userOverride.confirmationDigest!==this.overrideDigest(r)))||!r.preparedTransaction)throw new ApiError(409,'WALLET_PERMIT_NOT_CONSUMED');

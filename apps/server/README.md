@@ -42,3 +42,5 @@ PI 可选模块：`agent-service.ts` 提供直接 PI 执行、任务绑定、执
 staging 增加 `/override`（仅模型拒绝／不确定且确定性检查完成）、完整 calldata 回报绑定、代币 receipt 事件及历史余额／allowance 观察、`wallet-observation-v2` 独立复验。硬规则仍不可覆盖，详见 [020](../../docs/decisions/020-staging-risk-and-token-receipts.md)。
 
 `GET /api/wallet/reviews` 提供筛选与键集分页，`GET /api/wallet/reviews/:id/actions` 投影当前可用操作；两者不触发 RPC／模型或写入。`wallet-history.ts` 负责摘要与查询，`WalletReviews.actions` 复用本地会话／策略／摘要校验。`verify:wallet:evm` 现覆盖本地测试驱动发送后的真实 EVM 回执与第二实例复验，后端仍不广播。前端交接见 [28](../../docs/28-staging钱包查询与操作接口.md)。
+
+`wallet-receipt-watch.ts` 保存独立回执跟踪队列；`POST /api/wallet/reviews/:id/receipt/watch` 显式启动，GET 查询，`/stop` 与 `/resume` 控制后续查询。复用原 recheck，不增加交易副作用，旧 DTO 不变。限额、重启恢复和前端接线见 [29](../../docs/29-回执跟踪队列.md)。

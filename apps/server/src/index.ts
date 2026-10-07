@@ -12,6 +12,7 @@ import {
 } from "@verdict/protocol";
 import { Engine } from "./engine.js";
 import { WalletReviews } from "./wallet.js";
+import { WalletReceiptWatches } from "./wallet-receipt-watch.js";
 import { AgentService } from "./agent-service.js";
 import { ApiError } from "./store.js";
 import { type ServerConfig } from "./config.js";
@@ -53,6 +54,7 @@ export function start_server(config: ServerConfig, launchId = "foreground") {
   const engine = new Engine(config);
   const agents = new AgentService(engine);
   const wallet = new WalletReviews(engine.store, config, agents.graph, agents.observer.record);
+  const receiptWatches = new WalletReceiptWatches(engine.store, config, wallet);
   let observationJob: Promise<unknown> | null = null;
   const server = createServer(async (req, res) => {
     try {
@@ -90,6 +92,15 @@ export function start_server(config: ServerConfig, launchId = "foreground") {
       if(req.method==='GET'&&walletActionsRoute){send(res,200,wallet.actions(walletActionsRoute[1]));return;}
       const receiptRecheck=path.match(/^\/api\/wallet\/reviews\/([\w-]+)\/receipt\/recheck$/);
       if(req.method==='POST'&&receiptRecheck){z.strictObject({}).parse(await body(req));send(res,200,await wallet.recheckReceipt(receiptRecheck[1]));return;}
+      const receiptWatch=path.match(/^\/api\/wallet\/reviews\/([\w-]+)\/receipt\/watch(?:\/(stop|resume))?$/);
+      if(receiptWatch){
+        if(req.method==='GET'&&!receiptWatch[2]){send(res,200,receiptWatches.get(receiptWatch[1]));return;}
+        if(req.method==='POST'){
+          z.strictObject({}).parse(await body(req));
+          const [,id,action]=receiptWatch;
+          send(res,action==='stop'?200:202,action==='stop'?receiptWatches.stop(id):action==='resume'?receiptWatches.resume(id):receiptWatches.start(id));return;
+        }
+      }
       const walletRoute=path.match(/^\/api\/wallet\/reviews\/([\w-]+)(?:\/(confirm|override|consume|cancel|broadcast))?$/);
       if(walletRoute){
         const [,id,action]=walletRoute;
@@ -338,12 +349,13 @@ export function start_server(config: ServerConfig, launchId = "foreground") {
     engine,
     agents,
     wallet,
+    receiptWatches,
     server,
     ready,
     close: async () => {
       await new Promise<void>((r) => server.close(() => r()));
       await observationJob;
-      await wallet.close();
+      await Promise.all([receiptWatches.close(),wallet.close()]);
       await agents.close();
       await engine.close();
     },
