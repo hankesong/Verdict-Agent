@@ -4,6 +4,10 @@
 
 首个场景为以太坊指定区块的账户状态。目前 **A 验收内核与 B 后端闭环可运行**：选择服务、签名交付、真实核验、错误替换／停止、证据下载、第二实例重验并改善选择。**简易网页已接入真实 API；真实链上存证仍未实现**，发布默认显示 `not_requested`。
 
+**2026-10-07：本轮后端定稿。** 保留已合入的 PI 直接执行、Guard、服务验收、证据复验、观测／活动图及钱包后端；不实施刚讨论的 Agent Admission Assessment 准入新方案，也不新增逐动作准入模型或恢复草案确认。后续按现有范围修复、复验和交接，详见 [定稿范围与已知限制](docs/decisions/018-backend-finalization.md)。
+
+定稿基线 `d972d94` 与已验证的 PR #10 提交 `1aa4c44` 文件树相同：本地 A **48** 项、集成 **107** 项、浏览器 **11** 项通过；[Linux／Windows CI](https://github.com/hankesong/Verdict-Agent/actions/runs/37642992209) 均通过。本次收尾仅更新文档，不新增 LIVE 模型、RPC 或链上运行结论。
+
 A 与测试数据已通过 [PR #1](https://github.com/hankesong/Verdict-Agent/pull/1)、[PR #2](https://github.com/hankesong/Verdict-Agent/pull/2) 合入 main；B 本轮代码和实际命令见 [B 实现与复验](docs/13-B包实现与复验.md)。仓库分支／合并状态以 Git 为准。
 
 新增 [Agent 工具、出海场景、架构与覆盖检查](docs/16-Agent工具与出海验收.md)：八个函数工具及消费端 `guard` 复用实际内核；出海服务商可以用同一验收层控制陌生数据服务风险。地区／网络仅是可用性观测来源，不影响密码学验收。历史材料帮助选择，每次新交付仍须验收。
@@ -75,13 +79,17 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 | B 真实观测 | 两家公共 RPC 的近期与历史探测；LIVE、FROZEN、FAULT_INJECTION 分组；不支持、429、超时、HTTP 错误分开 |
 | B 发布边界 | 与 verdict 分离的状态与原子队列；默认未接入，测试失败／幂等重试已验证，无伪造链上成功 |
 | B Agent 工具 | 严格工具参数、候选／验收／下载／导入／复验；`guard` 只交付本次 accepted 值，失败停止业务依赖 |
-| 简易前端 | 三个实际 API 视图、逐项审计、停止路径、原文件下载、独立复验与真实排序对照；7 条浏览器测试通过（含 PI 流程，模型为测试传输） |
-| PI 编排 | 直接接收任务、绑定条件后的六个业务工具、独立模型状态／用量／事件、取消／中断；18 项 PI 集成测试通过，真实模型联调状态见上文 |
-| 验证与接力 | A 48 项＋B 26 项＋PI 18 项测试、类型检查、实际五进程演示；函数工具示例、跨平台脚本和双平台 CI（远端结果见 Actions） |
+| 简易前端 | 任务、服务、证据、Agent 活动图、钱包审查、外审监控台与威胁账本；11 条浏览器测试通过（含 PI 流程，模型为测试传输） |
+| PI 编排 | 直接接收任务、绑定条件后的六个业务工具、独立模型状态／用量／事件、取消／中断；PI 回归包含在下述集成测试中，真实模型联调状态见上文 |
+| Guard 与观测 | 显式范围约束、执行前外审、一次性许可、签名安全报告与规则；脱敏 telemetry、只读活动图和观测 outbox |
+| 钱包后端 | 签名前审查、一次性许可、BOT 测试网 receipt／后状态观察与私有观察包重验；与 A 的验收、证据和发布状态分离 |
+| 验证与接力 | 定稿基线 A 48 项＋后端／PI／Guard／钱包等集成 107 项、浏览器 11 项、类型检查、真实本地五进程演示和双平台 CI |
 
 本轮真实观测为 12 个样本：10 OK、1 HTTP 403、1 范围／参数不支持。具体区块、来源、时间与限制见 [运行记录](docs/13-B包实现与复验.md)。这些结果只代表那次采样，不是提供商 SLA 或已验数据承诺。
 
 ## 尚未完成与接力
+
+以下保留为能力边界，不是本轮后端继续扩展的任务清单；新增功能以用户后续要求为准。其他工作树的未提交实验不属于定稿基线。
 
 | 状态 | 工作 | 入口／责任 |
 | --- | --- | --- |
@@ -103,7 +111,7 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 
 贡献者：[@CodeGanHaoZ](https://github.com/CodeGanHaoZ) 在 [PR #10](https://github.com/hankesong/Verdict-Agent/pull/10) 贡献了外审产品设计、结构化范围约束、telemetry 适配、规则增强、监控台与威胁账本。完整贡献历史见 [Contributors](https://github.com/hankesong/Verdict-Agent/graphs/contributors)。
 
-## Verdict Guard（开发中）
+## Verdict Guard（既有实现与限制）
 
 已接入独立任务边界、PI 执行前外审与范围硬拦截；未配置 `guard` 时直接 PI 入口不可用，固定流程仍可运行且未启用外审。安全报告／规则 API 与本地维护命令已加入。GLM 5.3＋DeepSeek 曾完成真实替换验收；最新按用户选择改为 GLM 5.3 执行与独立 GLM 5.3 行为外审，同模型首次联调在第三次审查时耗尽 180 秒预算，尚未完成替换；语义复验仅为独立模型判断，规则启用使用本地维护命令，见 [实现与限制](docs/20-Verdict-Guard.md)。
 
