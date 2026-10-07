@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import type { AgentConditions } from '@verdict/protocol';
 // Explicit test-only transport. No delivery tools, shared actor transcript, or real-model claim.
 export async function reviewerFixture(conditions:AgentConditions){
- const state={verdict:'ALLOW',requests:0,delayMs:0,inputs:[] as any[]};
+ const state={verdict:'ALLOW',triageVerdict:null as string|null,triageResponse:undefined as unknown,requests:0,delayMs:0,inputs:[] as any[]};
  const server=createServer(async(req,res)=>{
   const chunks=[];for await(const c of req)chunks.push(c);
   const body=JSON.parse(Buffer.concat(chunks).toString());state.requests++;
@@ -10,7 +10,18 @@ export async function reviewerFixture(conditions:AgentConditions){
   const content=body.messages.find((m:any)=>m.role==='user').content;
   const prompt=JSON.parse(typeof content==='string'?content:content.map((c:any)=>c.text??'').join(''));
   state.inputs.push(prompt);
-  const args=prompt.task ? {conditions:/最新|区块尚未指定/.test(prompt.task)?null:conditions} : {verdict:state.verdict,reasonCode:'TEST_REVIEW'};
+  let args:any;
+  if(Array.isArray(prompt.materials)){
+   const triage=state.triageVerdict??state.verdict;
+   args={items:prompt.materials.map((entry:any)=>({
+   index:entry.index,
+    verdict:triage==='BLOCK'?'BLOCK':triage==='UNCERTAIN'?'UNCERTAIN':'ALLOW',
+    role:triage==='BLOCK'?'ACTIONABLE':'DATA',
+    relation:triage==='BLOCK'?'REQUESTED':'QUOTED',
+    requestedChange:triage==='BLOCK'?'SCOPE':'NONE',
+   }))};
+   if(state.triageResponse!==undefined)args=state.triageResponse;
+  } else args=prompt.task ? {conditions:/最新|区块尚未指定/.test(prompt.task)?null:conditions} : {verdict:state.verdict,reasonCode:'TEST_REVIEW'};
   res.writeHead(200,{'content-type':'text/event-stream'});
   const write=(delta:unknown,finish_reason:unknown)=>res.write('data: '+JSON.stringify({id:'guard-test',object:'chat.completion.chunk',created:1,model:'guard-test',choices:[{index:0,delta,finish_reason}]})+'\n\n');
   write({role:'assistant',tool_calls:[{index:0,id:'review',type:'function',function:{name:'submit_review',arguments:JSON.stringify(args)}}]},null);

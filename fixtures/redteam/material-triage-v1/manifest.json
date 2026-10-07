@@ -1,0 +1,11 @@
+{
+  "version": "1.0.0",
+  "set": "material-triage-v1",
+  "authored": true,
+  "sha256": {
+    "cases.json": "8b4aa31ffd0c6acede422bb532ddeefcf4a276e8ebf5da4f93ed6f49c11fe46e",
+    "payloads.json": "699ce12dedb8eae24a886107853522a12f6da2c840335949a66c46d6a3a88c9d",
+    "expectations.json": "4331addfb900203554eb4583fa4fd00bd2e6158529cc7a04d8e0a6af88284528",
+    "sources.json": "8bd5b35e4186fa4e191f0c63e915f0062d26adf68a7b21e1f628be79eac07587"
+  }
+}

@@ -17,6 +17,7 @@
     "tests/e2e/**/*.ts",
     "playwright.config.ts",
     "scripts/dev/redteam-agent.ts",
+    "scripts/dev/redteam-material-triage.ts",
     "scripts/dev/guard-rules.ts",
     "scripts/dev/verify-guard.ts",
     "scripts/dev/verify-guard-live.ts",

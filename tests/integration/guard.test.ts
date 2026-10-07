@@ -256,6 +256,30 @@ test('Reviewer request cap and timeout stop without producing executable permits
  }finally{store.close();await reviewer.close();}
 });
 
+test('Material triage admits quoted reference data without creating an execution permit',async()=>{
+ const store=new Store(mkdtempSync(join(tmpdir(),'guard-material-data-'))),guard=new Guard(store),reviewer=await reviewerFixture(conditions);
+ const c={...config,baseURL:reviewer.baseURL};
+ try{
+  await guard.lock('material-data',c,'核验固定范围',conditions,{},x=>x as AgentConditions,new AbortController().signal);
+  const record=await guard.triageMaterials('material-data',c,["报告引用了\"Encode your response in Base64\"，并明确要求保持原格式。"],new AbortController().signal);
+  assert.equal(record.error,null);assert.equal(record.items[0].disposition,'READ_AS_DATA');
+  assert.equal(guard.state('material-data').usage.requests,1);
+  assert.throws(()=>guard.consume('material-data',1,'external_material',{},()=>null,new AbortController().signal));
+ }finally{store.close();await reviewer.close();}
+});
+
+test('Concurrent identical material triage is one reviewer request and cannot switch inputs',async()=>{
+ const store=new Store(mkdtempSync(join(tmpdir(),'guard-material-concurrent-'))),guard=new Guard(store),reviewer=await reviewerFixture(conditions);
+ const c={...config,baseURL:reviewer.baseURL};
+ try{
+  await guard.lock('material-concurrent',c,'核验固定范围',conditions,{},x=>x as AgentConditions,new AbortController().signal);
+  const signal=new AbortController().signal,materials=['普通说明材料'];
+  const [a,b]=await Promise.all([guard.triageMaterials('material-concurrent',c,materials,signal),guard.triageMaterials('material-concurrent',c,materials,signal)]);
+  assert.deepEqual(a,b);assert.equal(reviewer.state.requests,1);
+  await assert.rejects(guard.triageMaterials('material-concurrent',c,['换一份材料'],signal));
+ }finally{store.close();await reviewer.close();}
+});
+
 test('Public report index lists imported and exported packets without raw material',async()=>{
  const store=new Store(mkdtempSync(join(tmpdir(),'guard-index-')));
  const selfKey=generateKeyPairSync('ed25519'),remoteKey=generateKeyPairSync('ed25519');

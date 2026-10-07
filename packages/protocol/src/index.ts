@@ -232,7 +232,7 @@ export type ObservationOrigin = z.infer<typeof ObservationOriginSchema>;
 
 // PI orchestration is mutable application state, never part of the signed evidence schema.
 export const AGENT_API_VERSION = '1.1.0';
-export const AgentErrorSchema = z.enum(['MODEL_NOT_CONFIGURED','MODEL_ERROR','MODEL_RATE_LIMITED','MODEL_TIMEOUT','MODEL_LIMIT','TOOL_LIMIT','TOOL_INVALID','NO_VERIFIED_RESULT','CANCELLED','INTERRUPTED','DRAFT_INVALID','DRAFT_EXPIRED','BUDGET_EXHAUSTED','INTERNAL_ERROR','GUARD_STOPPED']);
+export const AgentErrorSchema = z.enum(['MODEL_NOT_CONFIGURED','MODEL_ERROR','MODEL_RATE_LIMITED','MODEL_TIMEOUT','MODEL_LIMIT','TOOL_LIMIT','TOOL_INVALID','NO_VERIFIED_RESULT','CANCELLED','INTERRUPTED','DRAFT_INVALID','DRAFT_EXPIRED','BUDGET_EXHAUSTED','INTERNAL_ERROR','GUARD_STOPPED','MATERIAL_REQUIRED']);
 export const AgentUsageSchema = z.strictObject({ requests:z.number().int().nonnegative(), inputTokens:z.number().nonnegative(), outputTokens:z.number().nonnegative(), cacheReadTokens:z.number().nonnegative(), cacheWriteTokens:z.number().nonnegative(), costUsd:z.number().nonnegative().nullable() });
 export const AgentConditionsSchema = z.strictObject({
   contextId:Id, account:AddressSchema, blockHash:HashSchema,
@@ -251,12 +251,30 @@ export const AgentDraftSchema = z.strictObject({
   prompt:z.string().min(1).max(6000), proposal:AgentProposalSchema.nullable(), usage:AgentUsageSchema,
   error:AgentErrorSchema.nullable(), agentId:Id.nullable(), createdAt:z.string().datetime(), expiresAt:z.string().datetime(),
 });
+// Content triage records never authorize actions and contain no material text.
+export const MaterialAssessmentSchema=z.strictObject({
+  index:z.number().int().min(0).max(7),materialDigest:HashSchema,
+  verdict:z.enum(['ALLOW','BLOCK','UNCERTAIN']),role:z.enum(['DATA','REFERENCE','ACTIONABLE','CONFLICTING','UNKNOWN']),
+  relation:z.enum(['DESCRIPTIVE','QUOTED','NEGATED','REQUESTED','MIXED','UNKNOWN']),
+  requestedChange:z.enum(['NONE','SCOPE','BUDGET','EXFILTRATION','OUTPUT','VERIFICATION','UNKNOWN']),
+  disposition:z.enum(['READ_AS_DATA','QUARANTINED']),
+});
+export const MaterialTriageRecordSchema=z.strictObject({
+  batchDigest:HashSchema,boundaryDigest:HashSchema,promptVersion:z.enum(['material-triage-v1','material-triage-v2']),
+  // Absent on earlier saved records: legacy disposition policy v1.
+  dispositionVersion:z.literal('material-disposition-v2').optional(),
+  items:z.array(MaterialAssessmentSchema).min(1).max(8),latencyMs:z.number().nonnegative(),
+  error:AgentErrorSchema.nullable(),
+});
+export type MaterialAssessment=z.infer<typeof MaterialAssessmentSchema>;
+export type MaterialTriageRecord=z.infer<typeof MaterialTriageRecordSchema>;
 export const AgentSnapshotSchema = z.strictObject({
   apiVersion:z.enum([API_VERSION, AGENT_API_VERSION]), agentId:Id, draftId:Id.nullable(), runId:Id.nullable(),
   status:z.enum(['QUEUED','RUNNING','COMPLETED','STOPPED','ERROR']),
   modelStatus:z.enum(['IDLE','RUNNING','COMPLETED','ERROR','CANCELLED']),
   modelId:Id, modelSource:z.enum(['LIVE','TEST_TRANSPORT']), usage:AgentUsageSchema,
   toolCalls:z.number().int().nonnegative(), error:AgentErrorSchema.nullable(), explanation:z.string().max(6000),
+  materialHandling:z.strictObject({policy:z.enum(['required','optional']),read:z.number().int().nonnegative(),quarantined:z.number().int().nonnegative(),status:z.enum(['READ_AS_DATA','QUARANTINED','NEEDS_MATERIAL','ERROR'])}).optional(),
   eventSequence:z.number().int().nonnegative(), createdAt:z.string().datetime(), finishedAt:z.string().datetime().nullable(),
 });
 export const AgentEventSchema = z.strictObject({
@@ -276,7 +294,7 @@ export type AgentUsage=z.infer<typeof AgentUsageSchema>;
 export type AgentError=z.infer<typeof AgentErrorSchema>;
 
 // Direct PI task submission; execution does not require a draft confirmation.
-export const CreateAgentRunSchema = z.strictObject({clientRequestId:Id,prompt:z.string().trim().min(1).max(6000), constraints:AgentConditionsSchema.optional(), untrustedMaterials:z.array(z.string().max(6000)).max(8).default([])});
+export const CreateAgentRunSchema = z.strictObject({clientRequestId:Id,prompt:z.string().trim().min(1).max(6000), constraints:AgentConditionsSchema.optional(), untrustedMaterials:z.array(z.string().max(6000)).max(8).default([]),materialPolicy:z.enum(['required','optional']).default('required')});
 
 // Local transport diagnostics, separate from signed delivery evidence.
 export const ModelRequestTimingSchema = z.strictObject({

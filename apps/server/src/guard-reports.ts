@@ -5,6 +5,7 @@ import { Store, ApiError } from './store.js';
 import { randomUUID } from 'node:crypto';
 import { Guard, boundaryViolation, ruleMatches } from './guard.js';
 import type { ServerConfig } from './config.js';
+import { AgentFailure } from './pi-runtime.js';
 
 export class GuardReports {
  constructor(readonly store:Store,readonly config:ServerConfig){
@@ -69,9 +70,13 @@ export class GuardReports {
   const timer=setTimeout(()=>controller.abort(),c.maxDurationMs);
   try{
    await guard.lock(taskId,c,'Independent review of reported material',packet.incident.boundary,{},x=>x as typeof packet.incident.boundary,controller.signal);
-   try{await guard.authorize(taskId,c,'external_material',{materials:packet.incident.sharedMaterials},()=>null,controller.signal);}catch{}
-   const state=guard.state(taskId),decision=state.decisions.at(-1);
-   return {status:decision?.verdict==='BLOCK'?'MODEL_SUSPECTED':decision?.verdict==='ALLOW'?'MODEL_NOT_REPRODUCED':'UNREPLAYABLE',basis:'INDEPENDENT_MODEL_JUDGMENT',modelSource:c.source,modelId:c.modelId,decision,usage:state.usage};
+   const triage=await guard.triageMaterials(taskId,c,packet.incident.sharedMaterials,controller.signal);
+   const state=guard.state(taskId);
+   const suspected=triage.items.some(i=>i.verdict==='BLOCK'&&['ACTIONABLE','CONFLICTING'].includes(i.role));
+   const readable=triage.items.every(i=>i.disposition==='READ_AS_DATA');
+   return {status:triage.error?'UNREPLAYABLE':suspected?'MODEL_SUSPECTED':readable?'MODEL_NOT_REPRODUCED':'UNREPLAYABLE',basis:'INDEPENDENT_MODEL_JUDGMENT',modelSource:c.source,modelId:c.modelId,materialTriage:triage,usage:state.usage};
+  }catch(error){
+   return {...report.replay,status:'UNREPLAYABLE',reason:error instanceof AgentFailure?error.reason:'REVIEW_UNAVAILABLE'};
   }finally{clearTimeout(timer);try{guard.stop(taskId);}catch{}}
  }
  candidate(id:string){
