@@ -30,12 +30,16 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Browser integration
         run: npm run test:e2e
+      - name: Wallet browser integration
+        run: npx playwright test --config playwright.wallet.config.ts
       - name: Preserve browser failure traces
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: browser-failures-${{ matrix.os }}
-          path: test-results/
+          path: |
+            test-results/
+            .local/test-results-wallet/
           if-no-files-found: ignore
           retention-days: 7
       - if: always() && runner.os == 'Linux'

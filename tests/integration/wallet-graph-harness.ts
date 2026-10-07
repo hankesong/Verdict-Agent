@@ -5,13 +5,14 @@ import {AgentConfigSchema,WalletConfigSchema} from '../../apps/server/src/config
 import {WalletReviewSchema,WalletGraphPageSchema,type CreateWalletReviewSchema} from '@verdict/protocol';
 import {z} from 'zod';
 export const account='0x'+'1'.repeat(40),recipient='0x'+'2'.repeat(40),txHash='0x'+'a'.repeat(64),preHash='0x'+'b'.repeat(64),postHash='0x'+'c'.repeat(64);
-export const body=()=>({clientRequestId:randomUUID(),transaction:{chainId:'0x3c8',from:account,to:recipient,value:'0x64',data:'0x'},intent:{account,chainId:'0x3c8',recipient,maxValueWei:'100',maxTotalFeeWei:'1000000',operation:'native_transfer' as const}});
+const placeholderSession='00000000-0000-4000-8000-000000000001';
+export const body=()=>({schemaVersion:'wallet-review-v2' as const,walletSessionId:placeholderSession,walletSessionRevision:1,clientRequestId:randomUUID(),transaction:{chainId:'0x3c8',from:account,to:recipient,value:'0x64',data:'0x'},intent:{account,chainId:'0x3c8',recipient,maxValueWei:'100',maxTotalFeeWei:'1000000',operation:'native_transfer' as const}});
 const listen=async(s:Server)=>{await new Promise<void>(r=>s.listen(0,'127.0.0.1',r));return `http://127.0.0.1:${(s.address() as {port:number}).port}`;};
 const close=async(s:Server)=>{s.closeAllConnections();await new Promise<void>(r=>s.close(()=>r()));};
 export async function walletHarness(){
   // Actual HTTP backend + SQLite + PI loop. RPC/model transports are explicit isolated fixtures.
   const h=await harness();
-  const rpcState={calls:[] as {method:string;params:any[]}[],txPatch:{} as Record<string,unknown>,receiptPatch:{} as Record<string,unknown>,blockPatch:{} as Record<string,unknown>,chain:'0x3c8',missingTx:false,missingReceipt:false,timeoutMethod:'',errorMethod:'',postStateError:false,postBalance:'0xefce0',delayMethod:'',delayMs:0};
+  const rpcState={handler:null as null|((method:string,params:any[])=>Promise<unknown>),calls:[] as {method:string;params:any[]}[],txPatch:{} as Record<string,unknown>,receiptPatch:{} as Record<string,unknown>,blockPatch:{} as Record<string,unknown>,chain:'0x3c8',missingTx:false,missingReceipt:false,timeoutMethod:'',errorMethod:'',postStateError:false,postBalance:'0xefce0',delayMethod:'',delayMs:0};
   const rpc=createServer(async(req,res)=>{
     const chunks=[];for await(const chunk of req)chunks.push(chunk);
     const {id,method,params}=JSON.parse(Buffer.concat(chunks).toString());rpcState.calls.push({method,params});
@@ -20,6 +21,10 @@ export async function walletHarness(){
     const post=params.at(-1)==='0x11';let result:unknown;
     if(method===rpcState.errorMethod||(post&&method==='eth_getBalance'&&rpcState.postStateError)){
       res.end(JSON.stringify({jsonrpc:'2.0',id,error:{message:'RPC_SECRET_CANARY FULL_CALLDATA_CANARY'}}));return;
+    }
+    if(rpcState.handler){
+      try{const overridden=await rpcState.handler(method,params);if(overridden!==undefined){res.setHeader('content-type','application/json');res.end(JSON.stringify({jsonrpc:'2.0',id,result:overridden}));return;}}
+      catch{res.setHeader('content-type','application/json');res.end(JSON.stringify({jsonrpc:'2.0',id,error:{code:-32000,message:'TEST_RPC_FAILURE'}}));return;}
     }
     switch(method){
       case 'eth_chainId':result=rpcState.chain;break;
@@ -52,10 +57,13 @@ export async function walletHarness(){
   h.config.wallet=WalletConfigSchema.parse({networks:[{chainId:'0x3c8',nativeSymbol:'tBOT',name:'BOT test transport',rpcUrlEnv:rpcEnv,maxValueWei:'10000',maxTotalFeeWei:'1000000'}],rpcTimeoutMs:200,reviewTimeoutMs:3000,permitTtlMs:10000,observationSource:'TEST_TRANSPORT'});
   h.config.guard=AgentConfigSchema.parse({...h.config.guard!,baseURL:(await listen(model))+'/v1',apiKeyEnv:keyEnv,source:'TEST_TRANSPORT',requestTimeoutMs:1500});
   await h.restart();
-  const api=async(path:string,input?:unknown)=>{const r=await fetch(h.base+path,input===undefined?{}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});return {code:r.status,data:await r.json() as any};};
+  const session=await h.app.wallet.sessions.create({account,chainId:'0x3c8',providerId:'test-wallet'});
+  const rawApi=async(path:string,input?:unknown)=>{const r=await fetch(h.base+path,input===undefined?{}:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});return {code:r.status,data:await r.json() as any};};
+  const api=async(path:string,input?:unknown)=>rawApi(path,path==='/api/wallet/reviews'&&input&&typeof input==='object'?{...(input as Record<string,unknown>),schemaVersion:'wallet-review-v2',walletSessionId:session.sessionId,walletSessionRevision:session.revision}:input);
   const settle=async(id:string)=>{for(let i=0;i<400;i++){const r=h.app.wallet.get(id);if(!['QUEUED','REVIEWING'].includes(r.status))return r;await new Promise(r=>setTimeout(r,10));}throw Error('wallet fixture deadline');};
   const create=async(input:z.infer<typeof CreateWalletReviewSchema>=body())=>{const {code,data}=await api('/api/wallet/reviews',input);if(code!==202)throw Error(JSON.stringify(data));return settle(data.reviewId);};
-  const consumed=async()=>{const r=await create();if(r.status!=='ALLOWED')throw Error(JSON.stringify(r));const reply=await api(`/api/wallet/reviews/${r.reviewId}/consume`,{transaction:r.preparedTransaction});if(reply.code!==200)throw Error(JSON.stringify(reply));return WalletReviewSchema.parse(h.app.wallet.get(r.reviewId));};
+  const confirm=async(r:any)=>{const reply=await api(`/api/wallet/reviews/${r.reviewId}/confirm`,{transactionDigest:r.transactionDigest,account:r.transaction.from,chainId:r.transaction.chainId,confirmationNonce:r.confirmationNonce,walletSessionId:r.walletSessionId,walletSessionRevision:r.walletSessionRevision,handwritingAcknowledged:true});if(reply.code!==200)throw Error(JSON.stringify(reply));};
+  const consumed=async()=>{const r=await create();if(r.status!=='ALLOWED')throw Error(JSON.stringify(r));await confirm(r);const reply=await api(`/api/wallet/reviews/${r.reviewId}/consume`,{transaction:r.preparedTransaction});if(reply.code!==200)throw Error(JSON.stringify(reply));return WalletReviewSchema.parse(h.app.wallet.get(r.reviewId));};
   const graph=async(id:string,query='')=>WalletGraphPageSchema.parse((await api(`/api/wallet/reviews/${id}/graph?${query}`)).data);
-  return {h,rpcState,reviewerState,api,create,settle,consumed,graph,close:async()=>{await h.close();await close(rpc);await close(model);delete process.env[rpcEnv];delete process.env[keyEnv];}};
+  return {h,rpcState,reviewerState,api,rawApi,session,create,settle,confirm,consumed,graph,close:async()=>{await h.close();await close(rpc);await close(model);delete process.env[rpcEnv];delete process.env[keyEnv];}};
 }

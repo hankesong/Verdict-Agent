@@ -6,6 +6,7 @@ import {
   type CreateRun,
   type RunSnapshot,
 } from "@verdict/protocol";
+export {DefenseClient,executeDefendedPayment,type DefenseExecutionAdapter} from './defense.js';
 export async function api(
   base: string,
   path: string,

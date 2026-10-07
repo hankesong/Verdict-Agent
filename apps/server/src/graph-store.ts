@@ -87,7 +87,7 @@ export class GraphStore {
       const same=prior.find(e=>e.stage===stage),stages=[...new Set(prior.map(e=>e.stage))];
       const actionOrder=same?.actionOrder??stages.length+1;
       const previousActionId=same?same.previousActionId:prior.at(-1)?.actionId??null;
-      const phase:AgentGraphEvent['phase']=stage==='TRANSACTION_INTENT'?'PROPOSAL':stage==='HARD_RULE'||stage==='PI_REVIEW'?'REVIEW':stage==='RECEIPT'||stage==='POST_STATE'||stage==='EVIDENCE_REPLAY'?'VERIFICATION':stage==='EVIDENCE'||stage==='PERMIT'?'OUTCOME':'EXECUTION';
+      const phase:AgentGraphEvent['phase']=stage==='TRANSACTION_INTENT'?'PROPOSAL':stage==='HARD_RULE'||stage==='PI_REVIEW'||stage==='USER_CONFIRMATION'?'REVIEW':stage==='RECEIPT'||stage==='POST_STATE'||stage==='EVIDENCE_REPLAY'?'VERIFICATION':stage==='EVIDENCE'||stage==='PERMIT'?'OUTCOME':'EXECUTION';
       const ev=AgentGraphEventSchema.parse({graphVersion:'1.0.0',eventId,sequence:row.seq+1,at,timestamp:at,agentId:meta.parentAgentId??`wallet:${reviewId}`,runId:meta.graphRunId,actionId:digest({reviewId,stage}),actionOrder,previousActionId,toolCallId:null,tool:null,phase,status,modelSource:meta.modelSource,traceId:meta.traceId,walletReviewId:reviewId,parentAgentId:meta.parentAgentId,graphRunId:meta.graphRunId,parentEventId:row.last_event_id,eventType,stage,...detail});
       this.store.db.prepare('INSERT INTO wallet_graph_events VALUES(?,?,?,?)').run(reviewId,ev.sequence,eventKey,JSON.stringify(ev));
       this.store.db.prepare('UPDATE wallet_graph_tasks SET seq=?,last_event_id=? WHERE review_id=?').run(ev.sequence,eventId,reviewId);
@@ -103,7 +103,7 @@ export class GraphStore {
     const meta=task?JSON.parse(task.meta) as WalletMeta:{reviewId,traceId:body.traceId??reviewId,graphRunId:body.graphRunId??reviewId,parentAgentId:body.parentAgentId,modelSource:body.reviewer.source};
     const rows=this.store.db.prepare('SELECT body FROM wallet_graph_events WHERE review_id=? AND seq>? ORDER BY seq LIMIT ?').all(reviewId,after,limit+1) as {body:string}[];
     const events=rows.slice(0,limit).map(r=>AgentGraphEventSchema.parse(JSON.parse(r.body)));
-    const waiting=['QUEUED','REVIEWING','ALLOWED','CONSUMED'].includes(body.status)&&!['SUCCESS','FAIL','REJECTED'].includes(body.receiptReport?.receiptStatus??'');
+    const waiting=(['QUEUED','REVIEWING','ALLOWED','CONSUMED'].includes(body.status)||(!!body.userOverride&&!!body.userConfirmedAt&&['BLOCKED','UNCERTAIN'].includes(body.status)))&&!['SUCCESS','FAIL','REJECTED'].includes(body.receiptReport?.receiptStatus??'');
     const last=this.store.db.prepare('SELECT body FROM wallet_graph_events WHERE review_id=? ORDER BY seq DESC LIMIT 1').get(reviewId) as {body:string}|undefined;
     const agentId=meta.parentAgentId??`wallet:${reviewId}`;
     return WalletGraphPageSchema.parse({graphVersion:'1.0.0',agentId,available:!!task,walletReviewId:reviewId,traceId:meta.traceId,parentAgentId:meta.parentAgentId??null,graphRunId:meta.graphRunId,events,nextCursor:events.at(-1)?.sequence??after,hasMore:rows.length>limit,status:body.status,receiptStatus:body.receiptReport?.receiptStatus??'NOT_REPORTED',

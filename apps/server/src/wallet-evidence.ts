@@ -4,6 +4,8 @@ import {digest} from '@verdict/core';
 import {canonical_json,WalletEvidenceBodySchema,WalletEvidencePacketSchema,WalletHashSchema,type WalletEvidencePacket,type WalletEvidenceReplay} from '@verdict/protocol';
 import {Store,ApiError} from './store.js';
 import {checkedTransaction,checkedReceipt,observedState,stateDelta,type WalletRpc,WalletObservationFailure} from './wallet-observation.js';
+import {tokenPostState} from './wallet-token-observation.js';
+import type {WalletNetwork} from './wallet-contract.js';
 export class WalletEvidenceStore {
   constructor(private store:Store){
     mkdirSync(resolve(store.dir,'wallet-evidence'),{recursive:true,mode:0o700});
@@ -23,7 +25,7 @@ export class WalletEvidenceStore {
     try{packet=WalletEvidencePacketSchema.parse(JSON.parse(readFileSync(resolve(this.store.dir,'wallet-evidence',`${id}.json`),'utf8')));}catch{throw new ApiError(404,'WALLET_EVIDENCE_UNAVAILABLE');}
     if(packet.evidenceRef!==id||digest(packet.body)!==id)throw new ApiError(409,'WALLET_EVIDENCE_TAMPERED');return packet;
   }
-  async replay(packet:WalletEvidencePacket,ask:WalletRpc,source:'LIVE'|'TEST_TRANSPORT',policy:()=>void):Promise<WalletEvidenceReplay>{
+  async replay(packet:WalletEvidencePacket,ask:WalletRpc,source:'LIVE'|'TEST_TRANSPORT',policy:()=>void,network?:WalletNetwork):Promise<WalletEvidenceReplay>{
     const base={evidenceRef:packet.evidenceRef,integrity:'VERIFIED' as const,authority:'RPC_OBSERVATION_ONLY' as const,reviewAndPermit:'NOT_REPLAYED' as const,observationSource:source};
     if(digest(packet.body)!==packet.evidenceRef)return {...base,integrity:'MISMATCH',status:'MISMATCH',reason:'WALLET_EVIDENCE_TAMPERED'};
     let result:WalletEvidenceReplay;
@@ -34,8 +36,11 @@ export class WalletEvidenceStore {
       const receipt=await checkedReceipt(ask,transaction,before);
       const after=await observedState(ask,p.preparedTransaction,receipt.blockNumber,receipt.blockHash);
       const postState=stateDelta(before,after,receipt.status==='0x1'?'SUCCESS':'FAIL');
-      const same=canonical_json({transaction,before,receipt,after,postState})===canonical_json({transaction:p.transaction,before:p.before,receipt:p.receipt,after:p.after,postState:p.postState});
-      result={...base,status:same?'MATCH':'MISMATCH',reason:same?'RPC_OBSERVATIONS_RECOMPUTED':'OBSERVATION_MISMATCH',postState};
+      const tokens=p.intent.operation==='contract_call'&&network?await tokenPostState(ask,p.preparedTransaction,p.intent,network,before,receipt):undefined;
+      if(p.intent.operation==='contract_call'&&!tokens)throw new WalletObservationFailure('TOKEN_NETWORK_NOT_CONFIGURED');
+      const tokenActual=tokens?{tokenPostState:tokens}:{},tokenRecorded=p.version!=='wallet-observation-v1'&&p.tokenPostState?{tokenPostState:p.tokenPostState}:{};
+      const same=canonical_json({transaction,before,receipt,after,postState,...tokenActual})===canonical_json({transaction:p.transaction,before:p.before,receipt:p.receipt,after:p.after,postState:p.postState,...tokenRecorded});
+      result={...base,status:same?'MATCH':'MISMATCH',reason:same?'RPC_OBSERVATIONS_RECOMPUTED':'OBSERVATION_MISMATCH',postState,...tokenActual};
     }catch(e){result={...base,status:e instanceof WalletObservationFailure&&e.mismatch?'MISMATCH':'UNKNOWN',reason:e instanceof WalletObservationFailure?e.reason:'RPC_REPLAY_UNAVAILABLE'};}
     this.store.db.prepare('INSERT OR REPLACE INTO wallet_evidence_replays VALUES(?,?)').run(packet.evidenceRef,JSON.stringify(result));return result;
   }

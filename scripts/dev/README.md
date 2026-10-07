@@ -44,3 +44,7 @@ setup.mjs 的可选首参数可指定 `.local` 内的隔离输出目录，默认
 `fixtures/redteam/material-triage-v2` 增加 8 对新编保留样本。评测记录包含 materialPromptVersion、materialPromptSha256、dispositionVersion 和重复序号；报告按版本分批，不能以最新代码替换历史结果。v2 命令与残余限制见 [后续复验](../../docs/26-Guard材料审查v2复验.md)。
 
 BOT 钱包图：`wallet:configure-network` 仅更新显式指定的 `.local` 配置，设置 chainId `0x3c8`、币种 `tBOT` 和 RPC 环境变量名。用新目录、独立端口／dataDir 运行两实例，勿覆盖 Ethereum 实例。钱包图专项已经纳入 `test:graph`，本地 RPC／模型均标为 TEST_TRANSPORT，见 [配置及 API 示例](../../docs/24-钱包活动图与BOT测试网观察.md)。
+
+钱包后端专项：`npm run test:wallet`。本地 EVM 检查：先按 [钱包后端 v2](../../docs/27-钱包后端v2.md) 在 `.local/evm-tools` 安装固定 Anvil/solc，再运行 `npm run verify:wallet:evm`。脚本编译本仓库测试代币，独立启动 loopback Anvil，检查模拟不改链上状态，再由本地测试驱动发送两笔转账／授权交易，验证待出块、后台跟踪、真实回执和第二实例复验。后端不广播；测试驱动只向自己的本地节点写入，不连接公共 RPC，模型使用 TEST_TRANSPORT。见 [回执跟踪说明](../../docs/29-回执跟踪队列.md)。
+
+防御层回归包含 [30](../../docs/30-Agent防御层API.md) 的 OWNER／AGENT／EXECUTOR、授权版本、任务预算、提议差异、执行凭证和适配器幂等用例。未配置 `defense` 时旧钱包测试保持兼容。

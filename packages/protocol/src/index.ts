@@ -335,8 +335,8 @@ export type RuleCandidate=z.infer<typeof RuleCandidateSchema>;
 // Execution graph projections are read-only application records, never signed A evidence.
 export const AgentGraphPhaseSchema=z.enum(['PROPOSAL','REVIEW','EXECUTION','VERIFICATION','OUTCOME','TASK']);
 export const AgentGraphStatusSchema=z.enum(['PENDING','RUNNING','ALLOW','BLOCK','UNCERTAIN','COMPLETED','PASS','FAIL','UNVERIFIABLE','REUSED','ADOPTED','STOPPED','ERROR','CANCELLED','INTERRUPTED','UNKNOWN','OBSERVED','LOCKED','PASSED','WAITING_SIGNATURE','CONSUMED','BROADCAST','RECEIPT_CONFIRMED','RECEIPT_FAILED','POST_STATE_RECHECKED','SAVED']);
-export const AgentGraphWalletEventTypeSchema=z.enum(['wallet.review.created','wallet.balance.observed','wallet.policy.checked','wallet.preflight.completed','wallet.guard.reviewed','wallet.permit.consumed','wallet.broadcast.reported','wallet.receipt.observed','wallet.post_state.checked','wallet.evidence.saved','wallet.evidence.replayed','wallet.review.stopped']);
-export const AgentGraphWalletStageSchema=z.enum(['WALLET_SESSION','TRANSACTION_INTENT','BALANCE_OBSERVATION','NONCE_OBSERVATION','HARD_RULE','RPC_PREFLIGHT','PI_REVIEW','PERMIT','BROADCAST','RECEIPT','POST_STATE','EVIDENCE','EVIDENCE_REPLAY']);
+export const AgentGraphWalletEventTypeSchema=z.enum(['wallet.review.created','wallet.balance.observed','wallet.policy.checked','wallet.preflight.completed','wallet.guard.reviewed','wallet.user.overridden','wallet.permit.consumed','wallet.broadcast.reported','wallet.receipt.observed','wallet.post_state.checked','wallet.evidence.saved','wallet.evidence.replayed','wallet.review.stopped']);
+export const AgentGraphWalletStageSchema=z.enum(['WALLET_SESSION','TRANSACTION_INTENT','BALANCE_OBSERVATION','NONCE_OBSERVATION','HARD_RULE','RPC_PREFLIGHT','PI_REVIEW','USER_CONFIRMATION','PERMIT','BROADCAST','RECEIPT','POST_STATE','EVIDENCE','EVIDENCE_REPLAY']);
 export const AgentGraphSourceSchema=z.enum(['USER','WALLET','RPC','DETERMINISTIC','PI']);
 export const AgentGraphEventSchema=z.strictObject({
   graphVersion:z.literal('1.0.0'),eventId:Id,sequence:z.number().int().positive(),at:z.string().datetime(),agentId:Id,runId:Id.nullable(),
@@ -374,3 +374,5 @@ export const AgentGraphRecordingSchema=z.strictObject({
 export type AgentGraphRecording=z.infer<typeof AgentGraphRecordingSchema>;
 
 export * from "./wallet.js";
+export * from "./defense.js";
+export * from "./model-settings.js";

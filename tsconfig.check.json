@@ -16,6 +16,7 @@
     "tests/integration/**/*.ts",
     "tests/e2e/**/*.ts",
     "playwright.config.ts",
+    "playwright.wallet.config.ts",
     "scripts/dev/redteam-agent.ts",
     "scripts/dev/redteam-material-triage.ts",
     "scripts/dev/guard-rules.ts",
@@ -23,6 +24,7 @@
     "scripts/dev/verify-guard-live.ts",
     "scripts/dev/verify-observability.ts",
     "scripts/dev/redteam-indirect.ts",
-    "scripts/dev/record-agent-graph.ts"
+    "scripts/dev/record-agent-graph.ts",
+    "scripts/dev/verify-wallet-evm.ts"
   ]
 }

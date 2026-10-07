@@ -1,0 +1,24 @@
+.wallet-route{position:relative;isolation:isolate;background-color:#fbfcf8;background-image:radial-gradient(#d8e1cf .7px,transparent .7px);background-size:20px 20px;min-height:160px}
+.wallet-route-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
+.wallet-route-paths path{fill:none;stroke:#bccbae;stroke-width:1.5;stroke-dasharray:4 5}
+.wallet-route-parcel[hidden]{display:none}
+.wallet-route-steps{display:grid;grid-template-columns:repeat(var(--route-columns,1),minmax(0,1fr));gap:58px 24px;padding:50px 28px 27px;margin:0;list-style:none}
+.wallet-route-steps:empty{display:none}
+.wallet-route-steps li{min-width:0;position:relative;border:1px solid #dce5d3;border-radius:9px;background:#fff;box-shadow:0 2px 6px #30432104;transition:border-color .2s}
+.wallet-route-steps li:before{content:"";position:absolute;width:7px;height:7px;top:-24px;left:calc(50% - 4px);border:1px solid #acbe9b;border-radius:50%;background:#f9fcf5;z-index:1}
+.wallet-route-steps li.current{border-color:#95ad7b;box-shadow:0 0 0 2px #b2c69a1c}
+.wallet-route-steps button{display:flex;flex-direction:column;gap:9px;text-align:left;width:100%;height:100%;padding:14px;border:0;border-radius:inherit;background:transparent;cursor:pointer;color:#4f6542;min-width:0}
+.wallet-route-steps button:hover{background:#f7faf2}.wallet-route-steps button:focus-visible{outline:2px solid #73905e;outline-offset:3px}
+.wallet-step-heading{display:flex;justify-content:space-between;gap:6px;font-size:9px;letter-spacing:.7px;color:#748366;font-variant-numeric:tabular-nums}
+.wallet-route-steps strong{font-size:12px;font-weight:550;line-height:1.6;overflow-wrap:anywhere}
+.wallet-step-state{font-size:10px;color:#66785b}.wallet-route-steps time{font-size:9px;color:#819077;font-variant-numeric:tabular-nums}
+.wallet-step-reason{font-size:9px;color:#6c7c62;line-height:1.6;overflow-wrap:anywhere;border-top:1px solid #edf1e7;padding-top:8px}
+.wallet-route-steps [data-tone=bad]{border-color:#dfbbaa;background:#fffaf7}.wallet-route-steps [data-tone=bad] .wallet-step-state{color:#a75d45}
+.wallet-route-steps [data-tone=warn]{border-color:#dfcba5;background:#fffdf7}.wallet-route-steps [data-tone=warn] .wallet-step-state{color:#95712e}
+.wallet-route-steps [data-tone=waiting] .wallet-step-state{color:#687c95}
+.wallet-route-empty{padding:65px 25px;color:#7a896c;text-align:center;font-size:12px}
+.journey-event.route-selected{background:#f4f8ed;outline:1px solid #d8e4ca;border-radius:6px}
+.wallet-route[data-columns="1"] .wallet-route-steps{padding:22px 16px 22px 46px;gap:16px}
+.wallet-route[data-columns="1"] li:before{top:calc(50% - 4px);left:-31px}
+.wallet-route[data-columns="1"] button{gap:7px}
+@media(prefers-reduced-motion:reduce){.wallet-route-steps li{transition:none}}

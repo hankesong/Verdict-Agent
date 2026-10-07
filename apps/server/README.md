@@ -36,3 +36,15 @@ PI 可选模块：`agent-service.ts` 提供直接 PI 执行、任务绑定、执
 只读图接口 `/api/agent/runs/:id/graph?after=0` 输出独立持久化的脱敏阶段记录，支持增量游标及旧任务无记录状态；不依赖观测服务。详见 [活动图](../../docs/22-Agent活动图.md)。
 
 钱包后端现有审查之外增加广播哈希核对、receipt 与历史状态观察，图 API `/api/wallet/reviews/:id/graph` 只输出脱敏事件。`wallet-observation.ts` 负责配置 RPC 的一致性检查；`wallet-evidence.ts` 单独保存本地观察包并独立重算，永不使用 A 的 Ethereum 证据目录／采用状态。见 [运行与 API](../../docs/24-钱包活动图与BOT测试网观察.md)。
+
+钱包后端 v2 新增浏览器会话版本、逐次手写完成声明的绑定与一次性消费；配置后可审查固定代码哈希的 ERC-20 transfer/approve，并以真实 RPC 模拟核对效果。创建请求必须使用 `wallet-review-v2`，旧前端需要适配，当前未完成新网页签名流程。API、配置、错误边界与验证见 [钱包后端 v2](../../docs/27-钱包后端v2.md)。专项 `npm run test:wallet`；可选本地真实 EVM `npm run verify:wallet:evm`。
+
+staging 增加 `/override`（仅模型拒绝／不确定且确定性检查完成）、完整 calldata 回报绑定、代币 receipt 事件及历史余额／allowance 观察、`wallet-observation-v2` 独立复验。硬规则仍不可覆盖，详见 [020](../../docs/decisions/020-staging-risk-and-token-receipts.md)。
+
+`GET /api/wallet/reviews` 提供筛选与键集分页，`GET /api/wallet/reviews/:id/actions` 投影当前可用操作；两者不触发 RPC／模型或写入。`wallet-history.ts` 负责摘要与查询，`WalletReviews.actions` 复用本地会话／策略／摘要校验。`verify:wallet:evm` 现覆盖本地测试驱动发送后的真实 EVM 回执与第二实例复验，后端仍不广播。前端交接见 [28](../../docs/28-staging钱包查询与操作接口.md)。
+
+`wallet-receipt-watch.ts` 保存独立回执跟踪队列；`POST /api/wallet/reviews/:id/receipt/watch` 显式启动，GET 查询，`/stop` 与 `/resume` 控制后续查询。复用原 recheck，不增加交易副作用，旧 DTO 不变。限额、重启恢复和前端接线见 [29](../../docs/29-回执跟踪队列.md)。
+
+`payment-defense.ts` 提供防御层授权／任务／提议／一次性执行凭证；`defense-auth.ts` 分离 OWNER、AGENT、EXECUTOR。启用 `defense` 后旧钱包写接口关闭，执行适配器使用 `examples/consumer/src/defense.ts`；材料摘要、差异、预算和多链 finality 约束见 [30](../../docs/30-Agent防御层API.md)。
+
+本地模型设置：`GET /api/settings/models`、`POST /api/settings/models/agent` 和 `/guard`。共享 `model-settings-v1` DTO 只返回非敏感配置与密钥存在标记。设置保存在本实例 `dataDir/model-settings.json`（0600），重启载入并优先于启动文件中对应角色的模型配置。保存成功立即更新 PI 和钱包审查器，模型地址变化要求重新提交密钥；任务运行、有效待签名审查和过期 revision 阻止写入。设置接口不发出模型请求，保留本地 Host／Origin 限制，defense 模式不开放。见 [027](../../docs/decisions/027-local-model-settings.md)。

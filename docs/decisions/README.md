@@ -23,3 +23,18 @@
 | [015](015-wallet-activity-backend.md) | 钱包与 BOT 测试网后端活动图 | 只读图事件、服务端 receipt 核对、私有观察包独立复验 |
 
 新增决定应区分用户已确认内容、工程选择及待验证假设。不能将未运行的能力、候选方向或历史试验写成当前完成的产品功能。
+
+| [019](019-wallet-backend-v2.md) | 钱包后端 v2 | 会话失效、原生币与受限 ERC-20 预审、逐次确认；前端重做及风险覆盖执行后置 |
+
+| [020](020-staging-risk-and-token-receipts.md) | staging 后端推进 | 保留 v2 分支，增加有界风险继续与 ERC-20 回执／观察包复验 |
+
+| [022](022-staging-backend-continuation.md) | staging 子分支接力 | 最近审查与可用操作接口，本地 EVM 回执／第二实例复验 |
+| [023](023-bounded-receipt-tracking.md) | 有界回执跟踪 | 显式队列、退避／限额、暂停恢复与重启持久化 |
+| [024](024-agent-defense-layer.md) | Agent 防御层 | 用户授权、Agent 提议、执行凭证、身份边界与多链观察 |
+| [021](021-frontend-wallet-product.md) | 钱包优先的正式前端 | 保留原前端工作树的产品方向与演进记录 |
+| [022 前端](022-friday-payment-frontend.md) | 《周五付款》付款工作台 | 本机条件、付款对照、逐次手写与快递路线 |
+| [025](025-staging-frontend-integration.md) | 前端合入 STAGING | 钱包 v2 页面与现有后端集成；新增后端接口接线边界 |
+| [026](026-same-browser-usage.md) | 同设备使用范围 | 保留本机条件与最近索引，当前不建设跨端同步 |
+| [027](027-local-model-settings.md) | 本地模型设置 | 网页配置两类 Agent，私有持久保存并立即生效 |
+| [028](028-reviewer-only-settings.md) | 仅保留审查模型设置 | 更新 027 的网页范围，付款手动发起，不提供执行 Agent 配置 |
+| [029](029-github-release-and-tencent-deploy.md) | GitHub 合并与腾讯云部署 | 独立 HTTPS 站点、持久数据与访问口令；不迁移本机历史 |

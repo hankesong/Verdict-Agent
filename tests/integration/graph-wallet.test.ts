@@ -44,7 +44,7 @@ test('Create/consume/report races are idempotent and trace bindings cannot chang
   const r=await f.settle(replies[0].data.reviewId);const calls=f.rpcState.calls.length;
   assert.equal((await f.api('/api/wallet/reviews',input)).data.traceId,input.traceId);assert.equal(f.rpcState.calls.length,calls);
   assert.equal((await f.api('/api/wallet/reviews',{...input,traceId:randomUUID()})).code,409);
-  const consume=()=>f.api(`/api/wallet/reviews/${r.reviewId}/consume`,{transaction:r.preparedTransaction});const cs=await Promise.all([consume(),consume()]);assert.deepEqual(cs.map(c=>c.code).sort(),[200,409]);
+  await f.confirm(r);const consume=()=>f.api(`/api/wallet/reviews/${r.reviewId}/consume`,{transaction:r.preparedTransaction});const cs=await Promise.all([consume(),consume()]);assert.deepEqual(cs.map(c=>c.code).sort(),[200,409]);
   f.rpcState.delayMethod='eth_getTransactionByHash';f.rpcState.delayMs=30;
   const report=()=>f.api(`/api/wallet/reviews/${r.reviewId}/broadcast`,{txHash});const reports=await Promise.all([report(),report()]);assert.deepEqual(reports[0],reports[1]);
   const count=f.rpcState.calls.length,graph=await f.graph(r.reviewId);assert.equal((await report()).code,200);assert.equal(count,f.rpcState.calls.length);assert.deepEqual(await f.graph(r.reviewId),graph);assert.equal(graph.events.filter(e=>e.status==='CONSUMED').length,1);

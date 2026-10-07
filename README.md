@@ -57,7 +57,7 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 
 ## 简易前端与 Agent 框架
 
-运行 `npm run web` 打开 [验收工作台](http://127.0.0.1:5173)：提交任务、查看错误替换与逐项检查、浏览服务观测、下载证据、发起第二实例复验和比较历史证据排序。网页使用 TypeScript + Vite，详见 [前端说明](apps/web/README.md)。
+运行 `npm run web` 打开 [付款工作台](http://127.0.0.1:5173/#wallet)。侧栏“审计工具”保留任务验收、错误替换与逐项检查、服务观测、证据下载、第二实例复验和历史证据排序。网页使用 TypeScript + Vite，详见 [前端说明](apps/web/README.md)。
 
 底层使用 **PI agent-core / pi-ai 1.0.4** 的真实工具循环。按用户最新要求，输入任务后直接执行，PI 选服务、处理失败并调用复验；网页没有草案确认步骤。共享执行器强制 A 核验、预算和原子采用。**GLM 5.3 真实接口已跑通错误替换至 PASS 与全失败停止**；模型费用未知。配置、实际结果与限制见 [PI 接入与复验](docs/15-PI接入与复验.md)，[30 条场景数据集](fixtures/agent/README.md) 可按固定哈希复跑。
 
@@ -111,7 +111,7 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 
 ## 钱包签名前审查
 
-新增“钱包审查”页面：连接浏览器钱包后，普通原生币转账会先经过确定性参数检查、配置 RPC 预执行和 PI 自动审查，只有一次性短时许可通过后才调用钱包签名。服务器不持有私钥、不广播交易；合约调用、代币授权、permit 和第三方 DApp 交易暂未放行。配置与限制见 [钱包签名前审查](docs/23-钱包签名前审查.md)。2026-10-08 已在 BOT 测试网用命令行钱包完成一笔真实转账的审查、回报核对与第二实例复验，并实测七种拦截；网页钱包路径尚未联调，记录见 [docs/24](docs/24-钱包活动图与BOT测试网观察.md)。
+钱包后端已升级为 v2：会话版本、原生币预审、配置内 ERC-20 转账／授权模拟，以及签名前逐次确认。服务器不持有私钥、不广播交易。**STAGING 已接入付款工作台、v2 会话、逐次手写确认和逐事件快递路线**；前端接线范围见 [整合记录](docs/decisions/025-staging-frontend-integration.md)；API 接线、配置与实际范围见 [钱包后端 v2](docs/27-钱包后端v2.md)。`npm run test:wallet` 运行专项检查，`npm run verify:wallet:evm` 运行另行安装本地工具后的真实 EVM 验证。此前 BOT 原生币的一笔命令行钱包实测仍见 [24](docs/24-钱包活动图与BOT测试网观察.md)，不代表新增合约路径或网页插件实签已经完成。
 
 ## PI 行为看板
 
@@ -126,3 +126,15 @@ npm run verify -- .local/a-demo/bundle.json --context .local/a-demo/trusted-cont
 主前端新增 `#activity`：按具体动作展开提议、外审、执行与验收节点，提供三个录制回放 DEMO，也可从任务页查看实时任务。回放不发起任何交付，原始模型来源明确标记。交互、只读 API、数据来源和运行命令见 [活动图说明](docs/22-Agent活动图.md)。
 
 PR #10 增加外审监控台、威胁账本和 `@earendil-works/pi-telemetry@1.0.4` 摘要导出／外部活动导入。启用的攻击签名规则在调用模型前硬拦截；主线的活动图与钱包审查入口保持可用。见 [模型外审产品 PRD](docs/21-模型外审产品PRD.md)。
+
+当前 `staging` 后端还支持有界的用户风险继续，以及已配置 ERC-20 的交易回执、余额／授权观察和独立复验。前端接线与公开网络验证仍需分别完成，见 [staging 后端决定](docs/decisions/020-staging-risk-and-token-receipts.md)。
+
+`staging` 另提供最近审查列表／筛选分页与当前可用操作两个只读接口，供前端侧栏和确认流程接线；接口字段、状态语义和本地真实 EVM 回执／第二实例复验结果见 [钱包查询与操作接口](docs/28-staging钱包查询与操作接口.md)。
+
+交易哈希上报后可显式启动[回执跟踪队列](docs/29-回执跟踪队列.md)：有界重试、暂停／恢复、重启后保留进度，实际结果仍由原回执和证据检查决定。`verify:wallet:evm` 已包含本地交易待出块到自动观察完成的两条代币路径。
+
+防御层已增加 OWNER／AGENT／EXECUTOR 身份、版本化付款授权、任务预算、材料摘要绑定、提议差异阻断、一次性执行凭证、执行适配器示例和多链 finality/reorg 观察。接口见 [Agent 防御层 API](docs/30-Agent防御层API.md)；通用合约漏洞审计、交易所正式 connector、浏览器插件 UI 与 OCR 仍需后续适配。
+
+## SSH 云端部署
+
+最终整合版本支持独立 Nginx HTTPS 站点、访问口令、两个独立数据目录的后端和 systemd 持久运行。部署准备、同源 API、密钥与数据目录以及回滚流程见 [部署说明](scripts/deploy/README.md)。钱包网页仅配置审查模型，付款仍由用户手动发起和签名。

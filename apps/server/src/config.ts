@@ -8,6 +8,7 @@ import {
   ProvenanceModeSchema,
   VerificationContextSchema,
   parse_json_strict,
+  WalletAddressSchema, WalletHashSchema, DefenseIdSchema, DefenseRoleSchema,
   type VerificationContext,
 } from "@verdict/protocol";
 
@@ -69,13 +70,39 @@ export const WalletConfigSchema = z.strictObject({
     rpcUrlEnv: z.string().regex(/^[A-Z_][A-Z0-9_]*$/),
     maxValueWei: DecimalSchema, maxTotalFeeWei: DecimalSchema,
     nativeSymbol: z.string().min(1).max(12).optional(),
+    receiptEnabled:z.boolean().optional(),
+    requiredConfirmations:z.number().int().min(1).max(1000).default(1),
+    tokens: z.array(z.strictObject({
+      address: WalletAddressSchema, codeHash: WalletHashSchema,
+      maxTransferAmount: DecimalSchema, maxApprovalAmount: DecimalSchema,
+      approvedSpenders: z.array(WalletAddressSchema).max(64).default([]),
+    })).max(64).default([]).refine(v => new Set(v.map(t => t.address)).size === v.length),
   })).min(1).max(8).refine(v => new Set(v.map(n => n.chainId)).size === v.length),
   rpcTimeoutMs: z.number().int().min(100).max(15000).default(8000),
   reviewTimeoutMs: z.number().int().min(100).max(180000).default(90000),
   permitTtlMs: z.number().int().min(100).max(120000).default(60000),
   observationSource: z.enum(['LIVE','TEST_TRANSPORT']).default('LIVE'),
+  receiptTracking: z.strictObject({
+    enabled:z.boolean().default(true),
+    pollIntervalMs:z.number().int().min(100).max(60000).default(5000),
+    maxAttempts:z.number().int().min(1).max(100).default(12),
+    maxDurationMs:z.number().int().min(100).max(600000).default(180000),
+    maxPending:z.number().int().min(1).max(128).default(32),
+    concurrency:z.number().int().min(1).max(2).default(1),
+  }).prefault({}),
+  contractCalls: z.strictObject({
+    enabled: z.boolean().default(false),
+    maxCalldataBytes: z.number().int().min(4).max(32770).default(4096),
+    allowedSelectors: z.array(z.enum(['0xa9059cbb','0x095ea7b3'])).default(['0xa9059cbb','0x095ea7b3']),
+  }).prefault({}),
 });
 export const ServerConfigSchema = z.strictObject({
+  defense:z.strictObject({
+    principals:z.array(z.strictObject({id:DefenseIdSchema,tenantId:DefenseIdSchema,role:DefenseRoleSchema,
+      accounts:z.array(WalletAddressSchema).max(32).default([]),tokenEnv:z.string().regex(/^[A-Z_][A-Z0-9_]*$/),disabled:z.boolean().default(false)})).min(1).max(128)
+      .refine(p=>new Set(p.map(x=>x.id)).size===p.length),
+    maxProposalsPerTask:z.number().int().min(1).max(1000).default(100),
+  }).optional(),
   wallet: WalletConfigSchema.optional(),
   observability:z.strictObject({
     endpoint:z.string().url().refine(value=>{const u=new URL(value);return u.protocol==='http:'&&['127.0.0.1','localhost'].includes(u.hostname)&&u.pathname==='/'&&!u.search&&!u.hash&&!u.username&&!u.password;},'Observer must be a loopback HTTP origin').transform(v=>v.replace(/\/$/,'')),

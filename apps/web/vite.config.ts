@@ -13,6 +13,8 @@ export default defineConfig({
         "**/*.pem",
         "**/*.sqlite*",
         "**/*.db",
+        "**/model-settings.json",
+        "**/model-settings.json.*.tmp",
         "**/.git/**",
       ],
     },

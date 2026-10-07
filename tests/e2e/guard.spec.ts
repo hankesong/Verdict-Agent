@@ -25,6 +25,7 @@ test('Guard monitor refreshes real decisions; the outbox downloads a signed repo
   await expect(page.locator('#monitor-detail')).toContainText('SCOPE_candidates');
   const exported=await request.get(base+`/api/guard/tasks/${agentId}/decisions/1/export`);
   expect(exported.status()).toBe(200);const packet=await exported.json();
+  await page.locator('.workspace-tools > summary').click();
   await page.getByRole('button',{name:'威胁账本'}).click();
   const exportButton=page.locator(`[data-threat-detail="${packet.digest}"][data-exported="true"]`);
   await expect(exportButton).toBeVisible();
@@ -38,6 +39,7 @@ test('Guard monitor refreshes real decisions; the outbox downloads a signed repo
   await page.locator('#threat-candidate').click();
   await expect(page.locator('#threat-detail-result')).toContainText('CANDIDATE');
   await page.setViewportSize({width:390,height:844});
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
-  for (const name of ['外审监控台','Agent 活动','钱包审查']) await expect(page.getByRole('button',{name,exact:true})).toBeVisible();
+  await expect.poll(async()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+  await page.getByRole('button',{name:'切换侧栏'}).click();
+  for (const name of ['外审监控台','Agent 活动']) await expect(page.getByRole('button',{name,exact:true})).toBeVisible();
 });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { experienceMode } from "./wallet/experience-mode";
 import {
   API_VERSION,
   CapabilitiesSchema,
@@ -66,6 +67,7 @@ export async function request(
   body?: unknown,
   timeoutMs = 20000,
 ): Promise<unknown> {
+  if(experienceMode)throw new Error("模拟体验不访问服务端");
   const res = await fetch(base + path, {
     method: body === undefined ? "GET" : "POST",
     headers: body === undefined ? {} : { "content-type": "application/json" },
