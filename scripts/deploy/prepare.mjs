@@ -23,7 +23,7 @@ for(const [index,id] of ['one','two'].entries()){
  json(resolve(shared,'config',id+'.json'),{instanceId:'verdict-cloud-'+id,host:'127.0.0.1',port:3131+index,dataDir:resolve(shared,'instances',id),corsOrigins:['http://127.0.0.1:5190'],historyMaxAgeMs:86400000,publicationAdapter:'not_configured',wallet:{networks:[{chainId:'0x3c8',name:'BOT Chain Testnet',nativeSymbol:'tBOT',rpcUrlEnv:'VERDICT_WALLET_RPC_URL',maxValueWei:'100000000000000',maxTotalFeeWei:'1000000000000000'}],rpcTimeoutMs:8000,reviewTimeoutMs:90000,permitTtlMs:120000},services,contexts:[{schemaVersion:'1.0.0',contextId:'mainnet-demo',ruleVersion:'eth-account-v1',identityChainId:'1',policy:{id:'signed-account-v1',requireSignature:true,minimumFinality:'any-pinned'},trustedBlock:{dataChainId:'1',blockHash:fixture.header.hash,stateRoot:fixture.header.stateRoot,source:'Operator-pinned reviewed fixture, not independent consensus verification',finality:'historical-checkpoint'},keyBindings:bindings}]});
  writeNew(resolve(shared,id+'.env'),'VERDICT_WALLET_RPC_URL=https://rpc.bohr.life\n');
 }
-for(const name of ['one','two','demo-wrong-block','demo-wrong-value','demo-valid']){
+for(const name of ['one','two','demo-wrong-block','demo-wrong-value','demo-valid','qr-auth']){
  const app=name.startsWith('demo-')?'services/demo':'apps/server';
  writeFileSync(resolve(generated,`verdict-${name}.service`),`[Unit]
 Description=Verdict ${name}
@@ -36,7 +36,7 @@ User=verdict
 Group=verdict
 WorkingDirectory=${current}
 EnvironmentFile=-${shared}/${name}.env
-ExecStart=${node} --use-env-proxy ${current}/${app}/dist/main.js --config ${shared}/config/${name}.json
+ExecStart=${name==='qr-auth'?`${node} ${current}/scripts/deploy/qr-auth.mjs serve ${shared}/qr-access.json 3130`:`${node} --use-env-proxy ${current}/${app}/dist/main.js --config ${shared}/config/${name}.json`}
 Restart=on-failure
 RestartSec=3
 UMask=0077
@@ -83,6 +83,8 @@ server {
     index index.html;
     auth_basic "Verdict";
     auth_basic_user_file ${root}/access.htpasswd;
+    satisfy any;
+    auth_request /_verdict_session;
     client_max_body_size 2m;
     if ($verdict_origin_allowed = 0) { return 403; }
     add_header X-Content-Type-Options nosniff always;
@@ -90,6 +92,30 @@ server {
     add_header X-Frame-Options DENY always;
     add_header Strict-Transport-Security "max-age=31536000" always;
     location ~ /\\. { deny all; }
+    location = /_verdict_session {
+        internal;
+        auth_basic off;
+        auth_request off;
+        proxy_pass http://127.0.0.1:3130/check;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Host 127.0.0.1;
+    }
+    location = /login {
+        auth_basic off;
+        auth_request off;
+        access_log off;
+        proxy_pass http://127.0.0.1:3130/login;
+        proxy_set_header Host 127.0.0.1;
+    }
+    location = /_login/exchange {
+        auth_basic off;
+        auth_request off;
+        access_log off;
+        limit_req zone=verdict_api burst=5 nodelay;
+        proxy_pass http://127.0.0.1:3130/exchange;
+        proxy_set_header Host 127.0.0.1;
+    }
 ${routes}
     location / { try_files $uri $uri/ /index.html; }
 }
