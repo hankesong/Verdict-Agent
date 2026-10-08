@@ -1,6 +1,6 @@
 import {createServer} from 'node:http';
 import {createHash,createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
-import {readFileSync,writeFileSync,renameSync,existsSync,mkdirSync} from 'node:fs';
+import {readFileSync,writeFileSync,renameSync,existsSync,mkdirSync,realpathSync} from 'node:fs';
 import {dirname,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -69,7 +69,7 @@ export function createQRServer(file){
   }catch{return respond(req.url==='/check'?401:400);}
  });
 }
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+if(process.argv[1]&&realpathSync(process.argv[1])===fileURLToPath(import.meta.url)){
  const [command,file,arg,value]=process.argv.slice(2);
  if(!file)throw Error('Usage: qr-auth.mjs serve STATE_FILE PORT | issue STATE_FILE HTTPS_ORIGIN HOURS | revoke STATE_FILE GRANT_ID');
  if(command==='issue')console.log(JSON.stringify(issueQR(resolve(file),arg,Number(value??24))));
