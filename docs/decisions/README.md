@@ -38,3 +38,4 @@
 | [027](027-local-model-settings.md) | 本地模型设置 | 网页配置两类 Agent，私有持久保存并立即生效 |
 | [028](028-reviewer-only-settings.md) | 仅保留审查模型设置 | 更新 027 的网页范围，付款手动发起，不提供执行 Agent 配置 |
 | [029](029-github-release-and-tencent-deploy.md) | GitHub 合并与腾讯云部署 | 独立 HTTPS 站点、持久数据与访问口令；不迁移本机历史 |
+| [030](030-qr-login.md) | 扫码登录 | 有时限、可撤销的站点登录二维码，保留原账号密码 |
