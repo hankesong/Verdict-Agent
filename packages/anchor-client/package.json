@@ -1,0 +1,13 @@
+{
+  "name": "@verdict/anchor-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+  },
+  "dependencies": {
+    "viem": "2.57.3",
+    "zod": "4.6.5"
+  }
+}

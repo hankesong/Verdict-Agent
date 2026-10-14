@@ -36,6 +36,7 @@ import {
   type ServiceConfig,
 } from "./config.js";
 import { ApiError, newId, Store, type EvidenceRow } from "./store.js";
+import { broadcastExactTransaction, signAnchorTransaction, verifyAnchorReceipt, AnchorTargetSchema, EvidenceAnchorFormat } from "@verdict/anchor-client";
 
 const iso = () => new Date().toISOString();
 // Clock/mode descriptions may differ across independent contexts. All statuses, reasons,
@@ -64,6 +65,8 @@ export class Engine {
   readonly config: ServerConfig;
   readonly store: Store;
   private jobs = new Set<Promise<unknown>>();
+  private anchorJobs = new Map<string, Promise<EvidenceRow>>();
+  private anchorQueue: Promise<unknown> = Promise.resolve();
   private shuttingDown = false;
   constructor(config: ServerConfig) {
     this.config = ServerConfigSchema.parse(config);
@@ -75,6 +78,8 @@ export class Engine {
         throw new Error("Duplicate configuration IDs");
     }
     this.store = new Store(config.dataDir);
+    if (this.config.publicationAdapter === "anchor_client" && this.config.anchor?.enabled)
+      queueMicrotask(() => void this.resumePendingAnchors());
   }
   private schedule(job: Promise<unknown>) {
     this.jobs.add(job);
@@ -815,6 +820,8 @@ export class Engine {
         error: null,
         attemptId: newId(),
         attempts: row.publication.attempts + 1,
+        chainId: null, contractAddress: null, txHash: null, blockNumber: null, blockHash: null,
+        publisher: null, formatVersion: null,
       };
       this.store.saveEvidenceRow(row);
       return true;
@@ -831,8 +838,113 @@ export class Engine {
     }
     return this.store.evidenceRow(id);
   }
+  private anchorTarget() {
+    const c = this.config.anchor;
+    if (this.config.publicationAdapter !== 'anchor_client' || !c?.enabled) throw new ApiError(409, 'PUBLICATION_NOT_CONFIGURED');
+    const rpcUrl = process.env[c.rpcUrlEnv], privateKey = process.env[c.privateKeyEnv];
+    if (!rpcUrl || !privateKey) throw new ApiError(503, 'ANCHOR_CONFIGURATION_MISSING');
+    try { return AnchorTargetSchema.parse({ chainId: Number(c.chainId), rpcUrl, contractAddress: c.contractAddress, privateKey, confirmations: c.confirmations,
+      maxGasLimit: BigInt(c.maxGasLimit), maxFeePerGasWei: BigInt(c.maxFeePerGasWei), maxTotalFeeWei: BigInt(c.maxTotalFeeWei) }); }
+    catch { throw new ApiError(503, 'ANCHOR_CONFIGURATION_INVALID'); }
+  }
+  private async runAnchor(id: string, existingPending = false): Promise<EvidenceRow> {
+    let target: ReturnType<Engine['anchorTarget']>;
+    const started = this.store.evidenceRow(id);
+    if (!existingPending && started.publication.status !== 'pending') return started;
+    let raw = this.store.readAnchorPayload(id);
+    try {
+      target = this.anchorTarget();
+      const { bundle, row } = this.store.readEvidence(id);
+      if (bundle.provenance.mode === 'UI_MOCK' || digest(bundle) !== row.manifest.evidenceHash)
+        throw new ApiError(422, 'EVIDENCE_INTEGRITY_FAILED');
+      if (bundle.schemaVersion !== SCHEMA_VERSION || row.manifest.schemaVersion !== SCHEMA_VERSION || row.manifest.hashAlgorithm !== 'keccak256-jcs')
+        throw new ApiError(422, 'ANCHOR_FORMAT_UNSUPPORTED');
+      let signed: { rawTransaction: `0x${string}`; txHash: `0x${string}`; publisher: `0x${string}` };
+      if (raw) {
+        const { privateKeyToAccount } = await import('viem/accounts');
+        const account = privateKeyToAccount(target.privateKey as `0x${string}`);
+        const { keccak256: hash } = await import('viem');
+        signed = { rawTransaction: raw as `0x${string}`, txHash: hash(raw as `0x${string}`), publisher: account.address };
+      } else {
+        signed = await signAnchorTransaction({ target, evidenceHash: row.manifest.evidenceHash });
+        raw = signed.rawTransaction;
+        this.store.saveAnchorPayload(id, raw);
+        const pending = this.store.evidenceRow(id);
+        pending.publication = { ...pending.publication, chainId: String(target.chainId), contractAddress: target.contractAddress.toLowerCase() as `0x${string}`, txHash: signed.txHash, publisher: signed.publisher.toLowerCase() as `0x${string}`, formatVersion: EvidenceAnchorFormat };
+        this.store.saveEvidenceRow(pending);
+      }
+      // Always inspect first. If the process died after broadcast, rebroadcasting the same
+      // persisted signed bytes is idempotent at the transaction hash/nonce level.
+      let confirmed;
+      try { confirmed = await verifyAnchorReceipt({ target, txHash: signed.txHash, evidenceHash: row.manifest.evidenceHash, publisher: signed.publisher }); }
+      catch (error) {
+        if (error instanceof Error && ['ANCHOR_CHAIN_MISMATCH', 'ANCHOR_CONTRACT_MISMATCH', 'ANCHOR_EVENT_MISMATCH', 'ANCHOR_PUBLISHER_MISMATCH', 'ANCHOR_TRANSACTION_FAILED'].includes(error.message)) throw error;
+        const { createPublicClient, http } = await import('viem');
+        const client = createPublicClient({ transport: http(target.rpcUrl, { timeout: 10_000 }) });
+        let known;
+        try { known = await client.getTransaction({ hash: signed.txHash }); }
+        catch { throw new Error('ANCHOR_TRANSACTION_LOOKUP_FAILED'); }
+        if (!known) {
+          const sentHash = await broadcastExactTransaction(target, signed.rawTransaction);
+          if (sentHash.toLowerCase() !== signed.txHash.toLowerCase()) throw new Error('ANCHOR_TX_HASH_MISMATCH');
+        }
+        await client.waitForTransactionReceipt({ hash: signed.txHash, confirmations: target.confirmations, timeout: 120_000 });
+        confirmed = await verifyAnchorReceipt({ target, txHash: signed.txHash, evidenceHash: row.manifest.evidenceHash, publisher: signed.publisher });
+      }
+      const result = this.store.evidenceRow(id);
+      result.publication = { ...result.publication, status: 'confirmed', error: null, chainId: String(confirmed.chainId), contractAddress: target.contractAddress.toLowerCase() as `0x${string}`, txHash: confirmed.txHash, blockNumber: confirmed.blockNumber, blockHash: confirmed.blockHash, publisher: confirmed.publisher.toLowerCase() as `0x${string}`, formatVersion: EvidenceAnchorFormat };
+      this.store.saveEvidenceRow(result);
+      this.store.db.prepare('DELETE FROM anchor_private_payloads WHERE evidence_id=?').run(id);
+      return result;
+    } catch (error) {
+      const result = this.store.evidenceRow(id);
+      if (result.publication.status !== 'confirmed') {
+        const code = error instanceof Error && /^[A-Z0-9_]{1,120}$/.test(error.message) ? error.message : 'ANCHOR_FAILED';
+        result.publication = { ...result.publication, status: 'failed', error: code };
+        if (code === 'ANCHOR_TRANSACTION_FAILED') this.store.db.prepare('DELETE FROM anchor_private_payloads WHERE evidence_id=?').run(id);
+        this.store.saveEvidenceRow(result);
+      }
+      return result;
+    }
+  }
+  private publishAnchor(id: string, retryOf?: string): Promise<EvidenceRow> {
+    const active = this.anchorJobs.get(id);
+    if (active) return active;
+    const target = this.anchorTarget();
+    this.store.readEvidence(id);
+    const claimed = this.store.transaction(() => {
+      const row = this.store.evidenceRow(id);
+      if (row.publication.status === 'pending') return true;
+      if (row.publication.status !== 'not_requested' && !(row.publication.status === 'failed' && retryOf === row.publication.attemptId)) return false;
+      row.publication = { status: 'pending', adapter: 'anchor_client', attemptedAt: iso(), error: null,
+        attemptId: newId(), attempts: row.publication.attempts + 1,
+        chainId: String(target.chainId), contractAddress: target.contractAddress.toLowerCase() as `0x${string}`, txHash: row.publication.txHash,
+        blockNumber: null, blockHash: null, publisher: row.publication.publisher, formatVersion: EvidenceAnchorFormat };
+      this.store.saveEvidenceRow(row); return true;
+    });
+    if (!claimed) return Promise.resolve(this.store.evidenceRow(id));
+    return this.scheduleAnchor(id);
+  }
+  private scheduleAnchor(id: string): Promise<EvidenceRow> {
+    const active = this.anchorJobs.get(id);
+    if (active) return active;
+    const job = this.anchorQueue.then(() => this.runAnchor(id, true)).finally(() => this.anchorJobs.delete(id));
+    this.anchorJobs.set(id, job);
+    this.anchorQueue = job.catch(() => {});
+    return job;
+  }
+  private async resumePendingAnchors() {
+    for (const row of this.store.evidenceRows()) if (row.publication.adapter === 'anchor_client' && row.publication.status === 'pending') {
+      await this.scheduleAnchor(row.id);
+    }
+  }
+  /** Trusted operator/code boundary only. There is deliberately no anonymous HTTP publish route. */
+  publishEvidence(id: string, retryOf?: string) {
+    if (this.config.publicationAdapter === 'test_failure') return this.publishForTest(id, retryOf);
+    return this.publishAnchor(id, retryOf);
+  }
   async idle() {
-    await Promise.allSettled([...this.jobs]);
+    await Promise.allSettled([...this.jobs, ...this.anchorJobs.values()]);
   }
   async close() {
     this.shuttingDown = true;

@@ -134,7 +134,7 @@ export const OverrideWalletReviewSchema = ConfirmWalletReviewSchema.extend({
 export const BroadcastWalletReviewSchema = z.strictObject({txHash:z.string().regex(/^0x[0-9a-fA-F]{64}$/)});
 export const WalletMetaSchema = z.strictObject({
   configured:z.boolean(), reason:z.string(), supportedOperations:z.array(z.enum(['native_transfer','contract_call'])),
-  networks:z.array(z.strictObject({chainId:WalletQuantitySchema, name:z.string(), maxValueWei:Amount, maxTotalFeeWei:Amount, nativeSymbol:z.string().optional(), ready:z.boolean()})),
+  networks:z.array(z.strictObject({chainId:WalletQuantitySchema, name:z.string(), maxValueWei:Amount, maxTotalFeeWei:Amount, nativeSymbol:z.string().optional(), receiptEnabled:z.boolean().optional(), ready:z.boolean()})),
   reviewSchemaVersion: z.literal('wallet-review-v2').optional(),
   confirmationRequired: z.boolean().optional(),
 });

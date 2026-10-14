@@ -11,6 +11,9 @@
       "path": "packages/evidence"
     },
     {
+      "path": "packages/anchor-client"
+    },
+    {
       "path": "apps/verifier-cli"
     },
     {

@@ -39,9 +39,9 @@ export function confirmationSummary(r:WalletReview,symbol:string,network:string)
   const actual=actualPayment(r);
   return `<div class="confirmation-summary"><span class="product-eyebrow">本次签名</span><strong>${e(actual.amount)} ${e(r.intent.operation==='native_transfer'?symbol:'最小单位')}</strong><dl><dt>${r.intent.operation==='contract_call'&&r.intent.contractAction.kind==='erc20_approve'?'授权对象':'收款地址'}</dt><dd>${e(actual.recipient)}</dd><dt>网络</dt><dd>${e(network)}</dd></dl></div>`;
 }
-export function observationSummary(r:WalletReview,hash:string|null){
+export function observationSummary(r:WalletReview,hash:string|null,receiptEnabled=false){
   if(!hash)return '';
-  const receipt=r.receiptReport,covered=r.intent.operation==='native_transfer'&&r.transaction.chainId==='0x3c8';
+  const receipt=r.receiptReport,covered=r.intent.operation==='native_transfer'&&receiptEnabled;
   const receiptLabel=receipt?.receiptStatus==='SUCCESS'?'执行成功':receipt?.receiptStatus==='FAIL'?'执行失败':receipt?.receiptStatus==='REJECTED'?'交易不匹配':covered?'等待链上结果':'未覆盖';
   const state=receipt?.postStateStatus==='POST_STATE_RECHECKED'?'已复查':receipt?.postStateStatus==='UNKNOWN'?'尚未核实':'未复查';
   return `<div class="observation-summary"><div class="payment-section-heading"><h2>链上结果</h2></div><dl><div><dt>回执观察</dt><dd>${receiptLabel}</dd></div><div><dt>状态复查</dt><dd>${state}</dd></div><div><dt>证据记录</dt><dd>${r.evidenceRef?'已保存':'未保存'}</dd></div></dl>${receipt?.error?`<p>${e(reason(receipt.error))}</p>`:''}</div>`;

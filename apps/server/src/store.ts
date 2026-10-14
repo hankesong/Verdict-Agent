@@ -54,6 +54,7 @@ export class Store {
         CREATE TABLE IF NOT EXISTS evidence(id TEXT PRIMARY KEY, body TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS observations(id TEXT PRIMARY KEY, service_id TEXT NOT NULL, body TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS replays(id TEXT PRIMARY KEY, body TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS anchor_private_payloads(evidence_id TEXT PRIMARY KEY, raw_transaction TEXT NOT NULL);
       `);
       for (const row of this.db
         .prepare("SELECT body FROM runs WHERE status IN ('QUEUED','RUNNING')")
@@ -82,16 +83,10 @@ export class Store {
         row.publication = PublicationSchema.parse(row.publication);
         this.saveEvidenceRow(row);
       }
+      // Pending anchor attempts are recovered by Engine using the exact persisted signed bytes.
       for (const row of this.evidenceRows())
-        if (row.publication.status === "pending")
-          this.saveEvidenceRow({
-            ...row,
-            publication: {
-              ...row.publication,
-              status: "failed",
-              error: "INTERRUPTED",
-            },
-          });
+        if (row.publication.status === "pending" && row.publication.adapter !== "anchor_client")
+          this.saveEvidenceRow({ ...row, publication: { ...row.publication, status: "failed", error: "INTERRUPTED" } });
     } catch (e) {
       this.writer.close();
       throw e;
@@ -244,6 +239,13 @@ export class Store {
       )
       .run(row.id, canonical_json(row));
   }
+  saveAnchorPayload(evidenceId: string, rawTransaction: string) {
+    this.db.prepare("INSERT INTO anchor_private_payloads VALUES(?,?) ON CONFLICT(evidence_id) DO UPDATE SET raw_transaction=excluded.raw_transaction")
+      .run(evidenceId, rawTransaction);
+  }
+  readAnchorPayload(evidenceId: string): string | undefined {
+    return (this.db.prepare("SELECT raw_transaction FROM anchor_private_payloads WHERE evidence_id=?").get(evidenceId) as { raw_transaction: string } | undefined)?.raw_transaction;
+  }
   saveEvidence(
     bundle: EvidenceBundle,
     manifest: EvidenceManifest,
@@ -285,6 +287,8 @@ export class Store {
         error: null,
         attemptId: null,
         attempts: 0,
+        chainId: null, contractAddress: null, txHash: null, blockNumber: null, blockHash: null,
+        publisher: null, formatVersion: null,
       },
     };
     this.saveEvidenceRow(row);

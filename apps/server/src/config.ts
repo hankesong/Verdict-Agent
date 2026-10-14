@@ -134,8 +134,19 @@ export const ServerConfigSchema = z.strictObject({
     .default(["http://localhost:5173"]),
   historyMaxAgeMs: z.number().int().min(1).max(2592000000).default(86400000),
   publicationAdapter: z
-    .enum(["not_configured", "test_failure"])
+    .enum(["not_configured", "test_failure", "anchor_client"])
     .default("not_configured"),
+  publicationOperatorTokenEnv: z.string().regex(/^[A-Z_][A-Z0-9_]*$/).optional(),
+  anchor: z.strictObject({
+    enabled: z.boolean().default(false), chainId: DecimalSchema,
+    rpcUrlEnv: z.string().regex(/^[A-Z_][A-Z0-9_]*$/),
+    contractAddress: WalletAddressSchema,
+    privateKeyEnv: z.string().regex(/^[A-Z_][A-Z0-9_]*$/),
+    maxGasLimit: z.number().int().min(21000).max(500000),
+    maxFeePerGasWei: DecimalSchema,
+    maxTotalFeeWei: DecimalSchema,
+    confirmations: z.number().int().min(1).max(1000).default(1),
+  }).optional(),
   contexts: z
     .array(
       VerificationContextSchema.omit({

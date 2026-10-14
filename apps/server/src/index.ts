@@ -3,6 +3,7 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
   API_VERSION,
@@ -300,6 +301,20 @@ export function start_server(config: ServerConfig, launchId = "foreground") {
       }
       if (req.method === "POST" && path === "/api/evidence/import") {
         send(res, 200, await engine.importEvidence(await body(req)));
+        return;
+      }
+      const publishRoute = path.match(/^\/api\/evidence\/(0x[0-9a-f]{64})\/publish$/);
+      if (req.method === "POST" && publishRoute) {
+        const envName = engine.config.publicationOperatorTokenEnv;
+        const expected = envName ? process.env[envName] : undefined;
+        const authorization = req.headers.authorization ?? '';
+        const supplied = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+        const a = Buffer.from(expected ?? ''), b = Buffer.from(supplied);
+        if (!expected || !supplied || a.length !== b.length || !timingSafeEqual(a, b)) throw new ApiError(403, 'PUBLICATION_OPERATOR_AUTH_REQUIRED');
+        if (engine.config.publicationAdapter !== 'anchor_client' || !engine.config.anchor?.enabled) throw new ApiError(409, 'PUBLICATION_NOT_CONFIGURED');
+        const input = z.strictObject({ retryOf: z.string().min(1).max(160).optional() }).parse(await body(req));
+        void engine.publishEvidence(publishRoute[1], input.retryOf).catch(() => {});
+        send(res, 202, engine.store.evidenceRow(publishRoute[1]));
         return;
       }
       if (req.method === "GET" && path === "/api/evidence") {

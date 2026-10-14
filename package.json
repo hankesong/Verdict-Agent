@@ -11,6 +11,7 @@
     "packages/protocol",
     "packages/core",
     "packages/evidence",
+    "packages/anchor-client",
     "apps/verifier-cli",
     "packages/observations",
     "services/demo",

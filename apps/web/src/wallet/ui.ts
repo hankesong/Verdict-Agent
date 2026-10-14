@@ -56,6 +56,7 @@ export function mountWalletUI(root:HTMLElement) {
   });
   const network=()=>meta?.networks.find(n=>n.chainId===wallet.chainId);
   const networkFor=(r:WalletReview)=>meta?.networks.find(n=>n.chainId===r.transaction.chainId);
+  const receiptSupported=(r:WalletReview)=>!!networkFor(r)?.receiptEnabled;
   const nativeSymbol=(r?:WalletReview)=> (r?networkFor(r):network())?.nativeSymbol??((r?.transaction.chainId??wallet.chainId)==='0x3c8'?'tBOT':(r?.transaction.chainId??wallet.chainId)==='0x1'?'ETH':'原生币');
   const operation=()=>$<HTMLSelectElement>('wallet-operation').value;
   const symbolFor=(r?:WalletReview)=>r?.intent.operation==='contract_call'?'最小单位':nativeSymbol(r);
@@ -145,7 +146,7 @@ export function mountWalletUI(root:HTMLElement) {
     const running=['QUEUED','REVIEWING'].includes(review.status);
     const cancellable=['QUEUED','REVIEWING','ALLOWED','BLOCKED','UNCERTAIN'].includes(review.status)&&!txHash&&!signing;
     const canSign=review.status==='ALLOWED'&&ownedId===review.reviewId&&signedId!==review.reviewId&&Date.now()<(review.expiresAt??0);
-    $('track-actions').innerHTML=signing?'<p class="waiting-wallet">等待钱包确认…</p>':txHash&&review.intent.operation==='contract_call'?'<p class="waiting-wallet">回执核对未覆盖</p>':txHash&&review.transaction.chainId!=='0x3c8'?'<p class="waiting-wallet">当前网络的回执核对未覆盖</p>':txHash?(review.evidenceRef?'':'<button class="product-secondary" id="receipt-recheck">继续查询链上结果</button>'):running?'':canSign?'':'<button class="product-secondary" id="review-again">重新审查</button><button class="product-quiet" id="review-edit">修改付款</button>';
+    $('track-actions').innerHTML=signing?'<p class="waiting-wallet">等待钱包确认…</p>':txHash&&review.intent.operation==='contract_call'?'<p class="waiting-wallet">回执核对未覆盖</p>':txHash&&!receiptSupported(review)?'<p class="waiting-wallet">当前网络未配置回执核对</p>':txHash?(review.evidenceRef?'':'<button class="product-secondary" id="receipt-recheck">继续查询链上结果</button>'):running?'':canSign?'':'<button class="product-secondary" id="review-again">重新审查</button><button class="product-quiet" id="review-edit">修改付款</button>';
     if(cancellable)$('track-actions').insertAdjacentHTML('beforeend','<button class="product-quiet" id="review-cancel">取消本次付款</button>');
     $('review-cancel')?.addEventListener('click',async()=>{try{const id=review!.reviewId;await request(primary,`/api/wallet/reviews/${id}/cancel`,{});epoch++;ownedId=null;pad.clear();review=WalletReviewSchema.parse(await request(primary,`/api/wallet/reviews/${id}`));await loadGraph();draw();}catch(x){error(x);}});
     $('review-again')?.addEventListener('click',()=>{if(!wallet.account){openWallet();return;}if(review){fillReview();void submit();}});
@@ -161,12 +162,12 @@ export function mountWalletUI(root:HTMLElement) {
     $('payment-milestones').innerHTML=paymentMilestones(r,!!txHash);
     $('payment-comparison').innerHTML=paymentComparison(r,nativeSymbol(r),networkName);
     $('confirmation-summary').innerHTML=!txHash&&r.status==='ALLOWED'?confirmationSummary(r,nativeSymbol(r),networkName(r.transaction.chainId)):'';
-    $('observation-summary').innerHTML=observationSummary(r,txHash);
+    $('observation-summary').innerHTML=observationSummary(r,txHash,receiptSupported(r));
     const contract=r.intent.operation==='contract_call';
     $('contract-summary').hidden=!contract;
     $('contract-summary').innerHTML=contract?`<dt>代币合约</dt><dd>${e(r.transaction.to)}</dd><dt>操作</dt><dd>${e(r.intent.operation==='contract_call'?r.intent.contractAction.kind:'')}</dd><dt>目标地址</dt><dd>${e(destinationFor(r))}</dd><dt>数量（最小单位）</dt><dd>${e(amountFor(r))}</dd>`:'';
     const status=signing?'等待钱包确认':txHash?(receipt?statuses[receipt.receiptStatus]:contract?'已提交 · 回执未核对':'等待回执'):statuses[r.status]??r.status;
-    $('track-status').textContent=status;$('track-source').textContent=demoMode?'UI_MOCK':r.reviewer.source==='TEST_TRANSPORT'?'TEST_TRANSPORT':n?.chainId==='0x3c8'?'BOT Testnet':'LIVE';
+    $('track-status').textContent=status;$('track-source').textContent=demoMode?'UI_MOCK':r.reviewer.source==='TEST_TRANSPORT'?'TEST_TRANSPORT':n?.name??'LIVE';
     $('demo-mode-badge').hidden=!demoMode;
     $('track-reason').textContent=reason(receipt?.error??r.reason);$('track-id').textContent=short(r.reviewId);$('track-id').title=r.reviewId;
     const bad=['BLOCKED','UNCERTAIN','INTERRUPTED'].includes(r.status)||['FAIL','REJECTED'].includes(receipt?.receiptStatus??'');
@@ -246,7 +247,7 @@ export function mountWalletUI(root:HTMLElement) {
     review=null;ownedId=null;txHash=null;events=[];screen='compose';$('transfer-home').hidden=false;$('transfer-track').hidden=true;error();updateSession();saveHistory();showScreen('compose');location.hash='wallet';
   }
   async function reportReceipt(automatic=false){
-    if(!review||!txHash||review.intent.operation==='contract_call'||review.transaction.chainId!=='0x3c8')return;
+    if(!review||!txHash||review.intent.operation==='contract_call'||!receiptSupported(review))return;
     const id=review.reviewId,generation=epoch,reportedHash=txHash;
     if(receiptTask?.id===id&&receiptTask.pending)return;
     if(!automatic||receiptTask?.id!==id){stopReceiptTracking();receiptTask={id,attempts:0,started:Date.now(),state:'active',pending:false};}

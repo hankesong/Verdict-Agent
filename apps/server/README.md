@@ -11,7 +11,7 @@ npm run server -- --config .local/b-demo/local-two.json
 
 `src/config.ts` 加载可信策略；`store.ts` 负责 WAL SQLite、内容寻址及原子消费；`engine.ts` 编排真实核验、排序和发布队列；`index.ts` 提供 HTTP API；`main.ts` 提供进程入口。每个数据库只允许一个进程写入。请求在出网前登记，预算报价先保留；同 requestId 的相同请求返回相同 runId，变更内容或选择选项返回 409。进程异常中断后不自动重发未完成请求，而是 STOPPED/INTERRUPTED。
 
-`publishForTest(evidenceId, retryOf?)` 是受信代码调用的队列故障测试边界：原子登记 attemptId、pending、failed；显式 retryOf 必须匹配上一失败尝试，重复重试不重复消费。无适配器时保持 not_requested。未接 C adapter、没有链上确认。
+`publishForTest(evidenceId, retryOf?)` 保留为受信代码调用的队列故障测试边界。新增 `publishEvidence(evidenceId, retryOf?)` 由 operator-token 保护的 `POST /api/evidence/:id/publish` 触发；默认 `publicationAdapter=not_configured` 且 `anchor.enabled=false`。启用 `anchor_client` 后，先原子登记 pending、签名交易先持久化再广播，恢复时先查实际交易／回执，并只重播相同的签名原始交易。只有核验成功 receipt、网络、合约和匹配事件后才 confirmed。普通网页没有发布入口。完整过程、测试限制和部署准备见 [BOT 主网存证准备](../../docs/31-BOT主网存证部署准备.md)。当前没有可用本地 EVM/solc，未完成真实 EVM 验证或公共 RPC 兼容确认。
 
 测试：`npm run test:b`；全流程与 API 见 [B 实现与复验](../../docs/13-B包实现与复验.md)。当前面向本地联调，未实现公众多租户认证、分页归档或跨机器分布式队列。
 

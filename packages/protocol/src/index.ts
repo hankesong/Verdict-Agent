@@ -189,9 +189,13 @@ export const ReplaySnapshotSchema = z.strictObject({
   error: z.string().nullable(), createdAt: z.string().datetime(), finishedAt: z.string().datetime().nullable(),
 });
 export const PublicationSchema = z.strictObject({
-  status: AnchorStatusSchema, adapter: z.enum(['not_configured', 'test_failure']),
+  status: AnchorStatusSchema, adapter: z.enum(['not_configured', 'test_failure', 'anchor_client']),
   attemptedAt: z.string().datetime().nullable(), error: z.string().nullable(),
   attemptId: Id.nullable().default(null), attempts: z.number().int().nonnegative().default(0),
+  chainId: DecimalSchema.nullable().default(null), contractAddress: AddressSchema.nullable().default(null),
+  txHash: HashSchema.nullable().default(null), blockNumber: DecimalSchema.nullable().default(null),
+  blockHash: HashSchema.nullable().default(null), publisher: AddressSchema.nullable().default(null),
+  formatVersion: z.string().max(40).nullable().default(null),
 });
 export const ImportEvidenceSchema = z.strictObject({ bundle: EvidenceBundleSchema, manifest: EvidenceManifestSchema, contextId: Id });
 export const CreateReplaySchema = z.strictObject({ evidenceId: HashSchema, contextId: Id });

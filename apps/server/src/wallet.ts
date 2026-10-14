@@ -82,7 +82,7 @@ export class WalletReviews {
   info() {
     const configured=!!this.config.wallet?.networks.some(n=>!!process.env[n.rpcUrlEnv]) && !!this.config.guard && !!process.env[this.config.guard.apiKeyEnv];
     return {configured, reason:configured?'READY':'WALLET_RPC_OR_REVIEWER_NOT_CONFIGURED', reviewSchemaVersion:'wallet-review-v2', confirmationRequired:true, supportedOperations:this.config.wallet?.contractCalls.enabled?['native_transfer','contract_call']:['native_transfer'],
-      networks:(this.config.wallet?.networks??[]).map(({rpcUrlEnv,tokens: _tokens,receiptEnabled:_receiptEnabled,requiredConfirmations:_requiredConfirmations,...n})=>({...n, ready:!!process.env[rpcUrlEnv]}))};
+      networks:(this.config.wallet?.networks??[]).map(({rpcUrlEnv,tokens: _tokens,requiredConfirmations:_requiredConfirmations,...n})=>({...n,receiptEnabled:n.receiptEnabled??n.chainId===botChainId, ready:!!process.env[rpcUrlEnv]}))};
   }
   get(id:string):WalletReview {
     const row=this.store.db.prepare('SELECT body FROM wallet_reviews WHERE id=?').get(id) as {body:string}|undefined;
@@ -400,7 +400,7 @@ export class WalletReviews {
   private networkForReceipt(r:WalletReview){
     const n=this.config.wallet?.networks.find(n=>n.chainId===r.transaction.chainId);
     if(!n)throw new ApiError(503,'RECEIPT_NETWORK_NOT_CONFIGURED');
-    if(!(n.receiptEnabled??n.chainId===botChainId)||(!n.nativeSymbol&&n.chainId!==botChainId))throw new ApiError(400,'RECEIPT_NETWORK_NOT_ENABLED');return n;
+    if(!(n.receiptEnabled??n.chainId===botChainId)||!n.nativeSymbol)throw new ApiError(400,'RECEIPT_NETWORK_NOT_ENABLED');return n;
   }
   receiptTrackingReview(id:string){
     const r=this.get(id);
@@ -496,6 +496,7 @@ export class WalletReviews {
     try{const result=await this.evidence.replay(packet,(m,p)=>this.rpc(n,m,p,controller.signal),this.config.wallet!.observationSource,()=>{
       const t=packet.body.preparedTransaction,i=packet.body.intent;
       if(packet.body.chainId!==t.chainId||packet.body.chainId!==i.chainId||(packet.body.version==='wallet-observation-v3'&&packet.body.nativeSymbol!==n.nativeSymbol))throw new WalletObservationFailure('LOCAL_POLICY_MISMATCH',true);
+      if(packet.body.version!=='wallet-observation-v3'&&(n.chainId!==botChainId||n.nativeSymbol!=='tBOT'))throw new WalletObservationFailure('LEGACY_TESTNET_EVIDENCE_NETWORK_MISMATCH',true);
       if(i.operation==='native_transfer'){
         if(t.chainId!==n.chainId||i.chainId!==n.chainId||t.data!=='0x'||t.from!==i.account||t.to!==i.recipient||BigInt(t.value)>BigInt(i.maxValueWei)||BigInt(t.value)>BigInt(n.maxValueWei)||BigInt(t.gas)!==21000n||BigInt(t.gas)*BigInt(t.maxFeePerGas)>BigInt(i.maxTotalFeeWei)||BigInt(i.maxTotalFeeWei)>BigInt(n.maxTotalFeeWei))throw new WalletObservationFailure('LOCAL_POLICY_MISMATCH',true);
       } else {

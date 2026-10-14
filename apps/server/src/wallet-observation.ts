@@ -5,6 +5,7 @@ export class WalletObservationFailure extends Error {
   constructor(readonly reason:string,readonly mismatch=false){super(reason);}
 }
 export const botChainId='0x3c8';
+export const botMainnetChainId='0x2a5';
 const blockSchema=z.object({number:WalletQuantitySchema,hash:WalletHashSchema});
 const rpcTxSchema=z.object({hash:WalletHashSchema,from:WalletAddressSchema,to:WalletAddressSchema,chainId:WalletQuantitySchema.optional(),value:WalletQuantitySchema,nonce:WalletQuantitySchema,input:z.string().regex(/^0x(?:[0-9a-f]{2})*$/).max(32770),gas:WalletQuantitySchema,maxFeePerGas:WalletQuantitySchema,maxPriorityFeePerGas:WalletQuantitySchema,blockNumber:WalletQuantitySchema.nullable(),blockHash:WalletHashSchema.nullable(),authorizationList:z.array(z.unknown()).max(0).optional(),accessList:z.array(z.unknown()).max(0).optional()});
 export async function checkedTransaction(ask:WalletRpc,prepared:PreparedWalletTransaction,txHash:string){
